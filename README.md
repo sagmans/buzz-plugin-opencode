@@ -21,6 +21,8 @@ The plugin `sagmans.opencode` adds the agent type "OpenCode".
 - The New agent dialog and the agent's settings use the app's own model
   picker, instructions field and settings rows, so they look as they do for
   the app's own agents.
+- The Activity tab shows the agent's recent sessions and their transcripts.
+  It reads a session with `opencode acp` in a short-lived process.
 
 ```mermaid
 flowchart TB
@@ -88,6 +90,14 @@ To update, build again and install the `dist` folder again.
   does on its own.
 - The Settings tab does not warn about unsaved changes when you leave it.
   The plugin API does not give that part of the app to plugins.
+- The Activity tab lists only sessions that ran after this version was
+  installed: the plugin logs them, in this app's local storage. OpenCode's ACP
+  replay has no times and no turn ends, so a transcript shows no dates, and
+  its turns show "Status unknown". A conversation shows as a short id, because
+  the plugin API does not give channel names to this tab.
+- An open transcript replaces the Activity tab's content, with a back button.
+  The app's own agents open it in a panel tab. The plugin API does not give
+  that part of the app to plugins.
 - No usage, cost or thinking-level display. OpenCode's ACP server does not
   report them in a form that the app reads.
 

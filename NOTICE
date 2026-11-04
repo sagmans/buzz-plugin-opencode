@@ -16,6 +16,12 @@ bundled Goose agent type; each names its source in a header comment:
 - src/index.ts: the agent type wiring follows src/bundled/goose/index.ts.
 - src/views.tsx: the New agent and Settings views follow
   src/bundled/goose/tabs.tsx, built from the same buzz-app components.
+- src/activity.tsx, src/history.ts and src/transcript.ts: the Activity tab follows
+  src/bundled/goose/tabs.tsx and src/bundled/goose/transcript.ts.
+
+The build also bundles react-markdown and remark-gfm, with the unified, micromark
+and mdast libraries they use, for the transcripts. Each is licensed under the
+MIT License (@ungap/structured-clone: ISC).
 
 OpenCode is a separate program by its own authors (https://opencode.ai).
 This plugin does not include it; it starts the copy the user installed.
