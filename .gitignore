@@ -1,0 +1,9 @@
+# Build output: made from the pinned buzz-app clone on each machine.
+/dist/
+# Link to a local buzz-app clone (scripts/link-toolchain), and installed packages.
+/buzz-app
+/node_modules
+# Local clutter.
+.DS_Store
+*.log
+/.scratch/
