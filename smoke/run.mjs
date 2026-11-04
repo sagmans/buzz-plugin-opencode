@@ -274,7 +274,8 @@ async function loadPlugin(host, model) {
   };
   const effects = [];
   plugin.apply({
-    react: { createElement: () => null, useState: () => [], useEffect: () => {}, useId: () => "" },
+    // The pinned React, the version Buzz runs: apply() checks it.
+    react: (await import("react")).default,
     agents,
     host,
     pluginOwner: { id: "sagmans.opencode" },

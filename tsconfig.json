@@ -18,7 +18,10 @@
     "allowImportingTsExtensions": true,
     "types": ["vite/client", "node"],
     "resolveJsonModule": true,
-    "paths": { "@buzz/*": ["./buzz-app/src/*"] }
+    "paths": {
+      "@buzz/*": ["./buzz-app/src/*"],
+      "react-bundled": ["./node_modules/@types/react/index.d.ts"]
+    }
   },
   "include": ["src", "vite.config.ts", "buzz-app/src/**/*.d.ts"]
 }

@@ -16,15 +16,28 @@ const here = fileURLToPath(new URL(".", import.meta.url));
 const BUZZ_APP_LINK = "buzz-app";
 const BUNDLE_NAME = "plugin.js";
 const MANIFEST = "manifest.json";
+const CSS_SUFFIX = ".css";
 const ENTRY = resolve(here, "src/index.ts");
 /** Imports that name a file, a builtin or a module Vite made up, not a package. */
 const NOT_A_PACKAGE = /^(?:[./]|node:|\0|virtual:)/;
-/** Supplied by Buzz at run time: a copy in the bundle would be a second
- * React, or a Cordis the app does not manage. */
 /** An import statement left in the emitted module (rolldown writes each at
  * the start of a line). */
 const STATIC_IMPORT = /^import\s(?:[^"';]*?\sfrom\s*)?["']([^"']+)["']/gm;
-const HOST_SUPPLIED = /^(?:react(?:-dom)?(?:\/|$)|@buzz\/author$|@deepseek-ai\/cordis(?:\/|$))/;
+/** Supplied by Buzz at run time: a copy in the bundle would be a Cordis the
+ * app does not manage. React is not here: see REACT_HOST. */
+const HOST_SUPPLIED = /^(?:@buzz\/author$|@deepseek-ai\/cordis(?:\/|$))/;
+/** Buzz's React, bound at `apply(ctx)`: every `react` import resolves to it,
+ * so bundled buzz-app components render with the React that renders them. */
+const REACT_HOST = resolve(here, "src/react-host.ts");
+/** The one import of the bundled React package: `src/react-host.ts` only. */
+const REACT_BUNDLED = "react-bundled";
+/** Parts of React packages that are safe to bundle: the JSX runtime only
+ * builds element objects, and `react-dom` (not its renderers) supplies
+ * `createPortal` and `flushSync`. A renderer stays an import, and
+ * pluginContract fails the build. */
+const REACT_BUNDLE = /^(?:react\/jsx(?:-dev)?-runtime|react-dom)$/;
+/** Any other part of the React packages, such as a renderer. */
+const REACT_OTHER = /^react(?:-dom)?\//;
 
 const buzzLink = resolve(here, BUZZ_APP_LINK);
 const buzzSrc = resolve(buzzLink, "src");
@@ -34,6 +47,26 @@ const outDir = resolve(here, "dist");
 function inside(dir: string, file: string): boolean {
   const path = relative(dir, file);
   return path !== "" && !path.startsWith("..") && !isAbsolute(path);
+}
+
+/** Resolves the React packages before ownDependencies sees them: `react`
+ * to Buzz's React (REACT_HOST), the safe parts into the bundle, any other
+ * part left as an import, which pluginContract then rejects. */
+function reactFromHost(): Plugin {
+  return {
+    name: "opencode-react-from-host",
+    enforce: "pre",
+    resolveId(source, importer, options) {
+      if (source === "react") return REACT_HOST;
+      if (source === REACT_BUNDLED) {
+        if (importer !== REACT_HOST) this.error(`${REACT_BUNDLED} is for src/react-host.ts only`);
+        return this.resolve("react", ENTRY, { ...options, skipSelf: true });
+      }
+      if (REACT_BUNDLE.test(source)) return this.resolve(source, ENTRY, { ...options, skipSelf: true });
+      if (REACT_OTHER.test(source)) return { id: source, external: true };
+      return null;
+    },
+  };
 }
 
 /**
@@ -75,7 +108,15 @@ function ownDependencies(): Plugin {
 function pluginContract(): Plugin {
   return {
     name: "opencode-plugin-contract",
-    generateBundle(_options, bundle) {
+    // After Vite's CSS plugin, which adds the CSS modules of bundled buzz-app
+    // components as an asset.
+    generateBundle: { order: "post", handler(_options, bundle) {
+      // Buzz loads no plugin CSS. Those class names are content hashes, the
+      // same in Buzz's own build of the same buzz-app revision, so Buzz's
+      // stylesheet already styles them. AGENTS.md says to check this live
+      // on each new BUZZ_APP_REV.
+      for (const [name, output] of Object.entries(bundle))
+        if (output.type === "asset" && name.endsWith(CSS_SUFFIX)) delete bundle[name];
       const outputs = Object.values(bundle);
       const chunk = outputs[0];
       if (outputs.length !== 1 || chunk?.type !== "chunk")
@@ -87,14 +128,16 @@ function pluginContract(): Plugin {
         this.error(`The plugin still imports ${left.join(", ")}: add each to package.json with a pinned version, or stop using it (React and Cordis come from Buzz)`);
       if (!chunk.exports.includes("apply")) this.error("The entry must export apply(ctx)");
       this.emitFile({ type: "asset", fileName: MANIFEST, source: readFileSync(resolve(here, MANIFEST), "utf8") });
-    },
+    } },
   };
 }
 
 export default defineConfig({
   root: here,
   publicDir: false,
-  plugins: [ownDependencies(), pluginContract()],
+  // The bundled React packages (react, react-dom) pick their build by it.
+  define: { "process.env.NODE_ENV": JSON.stringify("production") },
+  plugins: [reactFromHost(), ownDependencies(), pluginContract()],
   // Symlinks kept: buzz-app modules keep their buzz-app/... ids, so the
   // bundle names them relative to the repository and holds no local path.
   resolve: { alias: { "@buzz": buzzSrc }, preserveSymlinks: true },

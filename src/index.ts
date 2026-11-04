@@ -5,7 +5,9 @@
 // plugin (src/bundled/goose/index.ts), the app's own ACP agent type.
 import { repositoriesContext } from "@buzz/features/communities/repositories";
 import type { PluginModule } from "@buzz/plugins/api";
+import { OpenCodeIcon } from "./icon";
 import { ModelList } from "./models";
+import { bindReact } from "./react-host";
 import { openCodeRun } from "./run";
 import { type Config, config, DEFAULT_CONFIG, OpenCodeRuntime } from "./runtime";
 import { createViews } from "./views";
@@ -21,6 +23,8 @@ const TITLE = "OpenCode";
 export const inject = ["react", "agents", "host"];
 export const apply: PluginModule["apply"] = (ctx) => {
   const { agents, host } = ctx;
+  // Before any view renders: the bundled app components use Buzz's React.
+  bindReact(ctx.react);
   // Only the desktop app can start `opencode acp`; no unusable type elsewhere.
   if (!host.spawn || !host.serveMcp || !host.resolveDirectory) return;
   const typeKey = `${ctx.pluginOwner?.id ?? PLUGIN_ID}/${TYPE_ID}`;
@@ -34,7 +38,7 @@ export const apply: PluginModule["apply"] = (ctx) => {
     agents.storage,
   );
   const models = new ModelList((id) => host.runCommand(id));
-  const { Create, CreateModel, SettingsTab } = createViews(ctx.react, models);
+  const { Create, CreateModel, SettingsTab } = createViews(models);
   const sync = () => {
     const snapshot = agents.snapshot();
     if (snapshot.status === "loading") return;
@@ -50,6 +54,7 @@ export const apply: PluginModule["apply"] = (ctx) => {
   agents.register<Config>({
     id: TYPE_ID,
     title: TITLE,
+    icon: OpenCodeIcon,
     description:
       "OpenCode on this computer, with any provider OpenCode supports. Each thread it is mentioned in is one continuing session.",
     defaults: () => ({ config: DEFAULT_CONFIG }),
@@ -108,6 +113,7 @@ export const apply: PluginModule["apply"] = (ctx) => {
         id: "settings",
         title: "Settings",
         role: "settings",
+        splitSettings: true,
         component: SettingsTab,
       },
     ],

@@ -8,12 +8,17 @@
     "node": ">=24"
   },
   "dependencies": {
+    "@base-ui/react": "1.9.0",
     "@noble/curves": "2.0.1",
+    "@tabler/icons-react": "3.46.0",
     "consola": "3.4.2",
     "mdast-util-gfm-strikethrough": "2.0.0",
+    "motion": "12.40.0",
     "nostr-tools": "2.25.2",
     "prosemirror-model": "1.25.8",
-    "prosemirror-schema-list": "1.5.1"
+    "prosemirror-schema-list": "1.5.1",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
   },
   "devDependencies": {
     "@types/node": "24.13.6",
