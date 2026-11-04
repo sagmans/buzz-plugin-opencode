@@ -18,7 +18,9 @@
     "prosemirror-model": "1.25.8",
     "prosemirror-schema-list": "1.5.1",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "react-markdown": "10.1.0",
+    "remark-gfm": "4.0.1"
   },
   "devDependencies": {
     "@types/node": "24.13.6",

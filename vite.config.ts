@@ -12,6 +12,26 @@ import { fileURLToPath } from "node:url";
 import { defineConfig, type Plugin } from "vite";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
+/** The markdown parser's dependency whose browser build calls `document` when
+ * it loads. Its plain build decodes the same names from a table. The plugin
+ * module must load without a DOM: the smoke run loads it in Node. */
+const DOM_AT_LOAD = "decode-named-character-reference";
+const DOM_BUILD = /index\.dom\.js$/;
+const PLAIN_BUILD = "index.js";
+
+/** Resolves DOM_AT_LOAD to its plain build. */
+function plainBuildAtLoad(): Plugin {
+  return {
+    name: "plain-build-at-load",
+    enforce: "pre",
+    async resolveId(source, importer, options) {
+      if (source !== DOM_AT_LOAD) return null;
+      const found = await this.resolve(source, importer, { ...options, skipSelf: true });
+      return found && { ...found, id: found.id.replace(DOM_BUILD, PLAIN_BUILD) };
+    },
+  };
+}
+
 /** The buzz-app clone link that scripts/link-toolchain makes. */
 const BUZZ_APP_LINK = "buzz-app";
 const BUNDLE_NAME = "plugin.js";
@@ -137,7 +157,7 @@ export default defineConfig({
   publicDir: false,
   // The bundled React packages (react, react-dom) pick their build by it.
   define: { "process.env.NODE_ENV": JSON.stringify("production") },
-  plugins: [reactFromHost(), ownDependencies(), pluginContract()],
+  plugins: [plainBuildAtLoad(), reactFromHost(), ownDependencies(), pluginContract()],
   // Symlinks kept: buzz-app modules keep their buzz-app/... ids, so the
   // bundle names them relative to the repository and holds no local path.
   resolve: { alias: { "@buzz": buzzSrc }, preserveSymlinks: true },
