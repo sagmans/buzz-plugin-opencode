@@ -18,6 +18,9 @@ The plugin `sagmans.opencode` adds the agent type "OpenCode".
   uses the model from your OpenCode config.
 - The turn, prompt and session rules come from the app's Goose agent type
   (see [NOTICE](NOTICE)), so OpenCode agents act as the app's own agents do.
+- The New agent dialog and the agent's settings use the app's own model
+  picker, instructions field and settings rows, so they look as they do for
+  the app's own agents.
 
 ```mermaid
 flowchart TB
@@ -83,6 +86,8 @@ To update, build again and install the `dist` folder again.
   step and no sandbox (see "Security").
 - `opencode models` can start OpenCode's background service, as OpenCode
   does on its own.
+- The Settings tab does not warn about unsaved changes when you leave it.
+  The plugin API does not give that part of the app to plugins.
 - No usage, cost or thinking-level display. OpenCode's ACP server does not
   report them in a form that the app reads.
 

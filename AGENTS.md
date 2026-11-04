@@ -39,6 +39,15 @@ settings. Do not edit the files that come from the hook template:
 - `dist/plugin.js` must stay one ES module with no imports. React and
   Cordis come from the app (`ctx.react`); `vite.config.ts` fails the build
   on any import left in the bundle.
+- Every `react` import resolves to `src/react-host.ts`. It forwards to the
+  app's React after `bindReact(ctx.react)`, so the bundled buzz-app
+  components share the app's hooks. The pinned `react` package must have
+  the same version as the app's React; `bindReact` stops on a mismatch.
+- The views bundle buzz-app components, not copies, so they look as the
+  app's own agents do. The build drops their CSS: the class names are
+  content hashes that the app's stylesheet of the same revision already
+  has. On each new `BUZZ_APP_REV`, check the New agent dialog and the
+  agent's Settings tab live in that app version.
 - The manifest grant is security-relevant. `scripts/check` accepts only
   the exact grant in `MANIFEST_HOST_GRANT`. Change both together, on
   purpose, and never add network origins.
