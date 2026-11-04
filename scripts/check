@@ -1,0 +1,354 @@
+#!/usr/bin/env bash
+# Repository checks for the plugin, beyond the generic ones in .githooks/lib.
+#
+# Why: Buzz runs plugin.js unsandboxed inside the desktop app, and the plugin
+# starts OpenCode as the user with Buzz tools and file access. A syntax or
+# type error, a manifest that grants more than OpenCode needs, a behavior
+# regression or a leaked private value would ship with the next install. The
+# git hooks call this script (pre-commit: --quick on the staged tree;
+# pre-push: full, on every pushed commit), and contributors run it by hand:
+# `scripts/check` or `scripts/check --quick`.
+#
+# Usage: scripts/check [--quick] [DIR]
+#   DIR is a tree with this repository's layout. Default: the top of the git
+#   worktree that holds the working directory, else this script's checkout.
+#   The pre-push hook relies on this: it runs this checkout's script inside a
+#   temporary worktree of each pushed commit, and that tree is the one to judge.
+#   A git worktree is judged by its tracked files only; any other directory
+#   (the exported index at pre-commit) by every regular file in it.
+#
+# The full run needs a buzz-app clone at the pinned revision with its
+# dependencies installed (README.md, Build): BUZZ_APP_DIR, else the clone this
+# checkout's buzz-app link points to. Its smoke run needs `opencode` on PATH
+# and network access to the smoke model's provider (smoke/run.mjs).
+#
+# Every check fails closed: a missing tool, a tool error or a finding exits 1.
+# A check whose input is absent from DIR (for example an older commit) is
+# skipped, because there is nothing for it to judge.
+# (Adapted from buzz-plugin-tailscale-host's scripts/check.)
+set -euo pipefail
+
+SELF_DIR="$(cd "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+REPO_TOP="$(cd "$SELF_DIR/.." && pwd -P)"
+HOOK_LIB="$REPO_TOP/.githooks/lib"
+# shellcheck source-path=SCRIPTDIR source=../.githooks/lib/tools.sh
+. "$HOOK_LIB/tools.sh"
+
+CHECK=repo-check
+MANIFEST=manifest.json
+BUILD_PLUGIN=scripts/build-plugin.mjs
+LINK_TOOLCHAIN=scripts/link-toolchain
+SMOKE=smoke/run.mjs
+TOOLCHAIN_LINK=buzz-app
+LOCKFILE=pnpm-lock.yaml
+# Buzz manifest limits (buzz-app crates/plugin-manager): id shape and length,
+# description size in bytes.
+MANIFEST_ID_RE='^[a-z][a-z0-9.-]{0,79}$'
+MANIFEST_DESCRIPTION_MAX_BYTES=280
+MANIFEST_API_VERSION=1
+# The only host grant the plugin may hold, in canonical JSON: OpenCode's ACP
+# server, its model list, loopback MCP for the Buzz tools, and files for the
+# workspace folder. Any wider grant (network origins, other programs) fails.
+MANIFEST_HOST_GRANT='{"commands":[{"args":["models"],"id":"models","maxOutputBytes":262144,"program":"opencode"}],"files":true,"mcp":true,"processes":[{"args":["acp"],"id":"opencode","program":"opencode"}]}'
+# Complexity limits match the generic changed-function check, applied here
+# to every function so old code cannot drift past them unnoticed.
+LIZARD_MAX_CCN=15
+LIZARD_MAX_LENGTH=100
+# Network scanners, installs and the smoke run must not freeze a push.
+SEMGREP_TIMEOUT_SECONDS=300
+TRIVY_TIMEOUT_SECONDS=300
+SMOKE_TIMEOUT_SECONDS=600
+PNPM_INSTALL_TIMEOUT_SECONDS=300
+SEMGREP_REGISTRY_CONFIG=p/javascript
+# Minimum versions: the releases these flags and rule sets were verified with.
+NODE_MIN_VERSION=24.0.0
+PNPM_MIN_VERSION=12.4.2
+SHELLCHECK_MIN_VERSION=0.10.0
+SHFMT_MIN_VERSION=3.8.0
+MARKDOWNLINT_MIN_VERSION=0.23.2
+LIZARD_MIN_VERSION=1.24.1
+SEMGREP_MIN_VERSION=1.182.0
+TRIVY_MIN_VERSION=0.60.0
+OPENCODE_MIN_VERSION=1.0.0
+# Generic shapes of private data that must never reach a public repository.
+# Real names and handles are deliberately not listed: the guard itself is
+# public. Bracketed first letters keep each pattern from matching its own
+# source text. Buzz's own default agent folder (~/.buzz) is a public app
+# default, not a private path, so it is not listed.
+PRIVATE_PATTERNS=(
+	'\.tail[0-9a-f]+\.ts\.net'
+	'/[U]sers/[^/[:space:]]+/'
+	'/[h]ome/[^/[:space:]]+/'
+	'[~]/[s]ource/'
+	'npub1[02-9ac-hj-np-z]{20,}'
+	'nsec1[02-9ac-hj-np-z]{20,}'
+	'(^|[^0-9a-f])[0-9a-f]{64}([^0-9a-f]|$)'
+	'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+	'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}'
+	'(^|[^[:alnum:]_])[A]SG-[0-9]+'
+	'[l]inear\.app'
+)
+# Matches that are public by design, judged per match (not per line):
+# RFC 2606 example domains, GitHub's shared SSH user, and all-zero
+# placeholder keys and ids.
+PRIVATE_ALLOWED_RE='@example\.(com|org|net|invalid)|^git@github\.com$|(^|[^0-9a-f])0{64}([^0-9a-f]|$)|^00000000-0000-4000-8000-000000000000$'
+# The lockfile pins each package by its public integrity hash and names
+# package authors' public addresses; neither is private data.
+PRIVATE_SKIP_RE='^pnpm-lock\.yaml$'
+# Files copied from the hook template stay byte-identical to it, so their
+# style is the template's concern; repo-owned shell lives elsewhere.
+TEMPLATE_SHELL_RE='^(\.githooks/[^/]+|\.githooks/lib/.*|scripts/setup-hooks)$'
+
+quick=0
+if [ "${1:-}" = --quick ]; then
+	quick=1
+	shift
+fi
+default_target="$(git rev-parse --show-toplevel 2>/dev/null || printf '%s' "$REPO_TOP")"
+target="$(cd "${1:-$default_target}" && pwd -P)"
+cd "$target"
+
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/repo-check.XXXXXX")"
+# Only the mktemp directory this run created, never a computed parent.
+cleanup() {
+	case "$tmp" in
+	*/repo-check.*) rm -rf -- "$tmp" ;;
+	esac
+}
+trap cleanup EXIT
+
+fail() {
+	echo >&2 "❌ $CHECK: $*"
+	exit 1
+}
+
+# Print the files to judge, NUL-separated, relative to the target.
+list_files() {
+	if [ "$(git rev-parse --show-toplevel 2>/dev/null || true)" = "$target" ]; then
+		git ls-files -z
+	else
+		find . -type f -not -path './buzz-app/*' -not -path './node_modules/*' -not -path './dist/*' -print0
+	fi
+}
+
+files=()
+while IFS= read -r -d '' path; do
+	files+=("${path#./}")
+done < <(list_files)
+
+has_file() {
+	local want="$1" path
+	for path in "${files[@]}"; do
+		[ "$path" = "$want" ] && return 0
+	done
+	return 1
+}
+
+# Print the tracked files with one of the given extensions, one per line.
+files_with() {
+	local path ext
+	for path in "${files[@]}"; do
+		for ext in "$@"; do
+			case "$path" in *."$ext") printf '%s\n' "$path" ;; esac
+		done
+	done
+}
+
+require_node() {
+	require_tool "$CHECK" node "$NODE_MIN_VERSION" 'install Node.js 24 or newer (https://nodejs.org)' node --version
+}
+
+# Every JS file must parse, so neither the Buzz loader nor a contributor meets
+# a syntax error that a reviewer missed. TypeScript is judged by the type check.
+check_js_syntax() {
+	local path list
+	list="$(files_with js mjs cjs)"
+	[ -n "$list" ] || return 0
+	require_node
+	while IFS= read -r path; do
+		node --check "$path" || fail "node --check failed: $path"
+	done <<<"$list"
+}
+
+# Every JSON file must parse: configs and the manifest are read without a
+# second chance in the app.
+check_json() {
+	local list
+	list="$(files_with json)"
+	[ -n "$list" ] || return 0
+	require_node
+	# shellcheck disable=SC2016,SC2086  # JS template literal, not shell; one path per word (spaces refused below)
+	node -e 'for (const p of process.argv.slice(1)) { try { JSON.parse(require("fs").readFileSync(p, "utf8")); } catch (e) { console.error(`  ${p}: ${e.message}`); process.exitCode = 1; } }' $list ||
+		fail "invalid JSON"
+}
+
+# Buzz rejects the whole install for a bad manifest, and the host block is the
+# plugin's whole grant on the user's computer: it must be exactly the one the
+# plugin needs (MANIFEST_HOST_GRANT).
+check_manifest() {
+	has_file "$MANIFEST" || return 0
+	require_node
+	node --input-type=module - "$MANIFEST" "$MANIFEST_ID_RE" "$MANIFEST_DESCRIPTION_MAX_BYTES" "$MANIFEST_API_VERSION" "$MANIFEST_HOST_GRANT" <<'NODE' || fail "$MANIFEST is invalid"
+import { readFileSync } from "node:fs";
+const [path, idPattern, maxBytes, apiVersion, grant] = process.argv.slice(2);
+const manifest = JSON.parse(readFileSync(path, "utf8"));
+/** Key order and spacing never change what a grant allows. */
+const canonical = (value) =>
+  Array.isArray(value)
+    ? value.map(canonical)
+    : value && typeof value === "object"
+      ? Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonical(value[key])]))
+      : value;
+const problems = [];
+if (!new RegExp(idPattern).test(manifest.id ?? "")) problems.push(`id ${JSON.stringify(manifest.id)} does not match ${idPattern}`);
+if (typeof manifest.name !== "string" || !manifest.name.trim()) problems.push("name is empty");
+if (manifest.apiVersion !== Number(apiVersion)) problems.push(`apiVersion is not ${apiVersion}`);
+const bytes = Buffer.byteLength(manifest.description ?? "", "utf8");
+if (bytes < 1 || bytes > Number(maxBytes)) problems.push(`description is ${bytes} bytes (1-${maxBytes})`);
+if (JSON.stringify(canonical(manifest.host)) !== grant) problems.push(`host grant is not exactly ${grant}`);
+for (const problem of problems) console.error(`  ${path}: ${problem}`);
+process.exit(problems.length ? 1 : 0);
+NODE
+}
+
+# Repo-owned shell scripts: lint for bugs, and one format so diffs stay small.
+check_shell() {
+	local path shells=() first
+	for path in "${files[@]}"; do
+		[[ "$path" =~ $TEMPLATE_SHELL_RE ]] && continue
+		first=''
+		IFS= read -r first <"$path" || true
+		case "$path:$first" in *.sh:* | *':#!'*sh) shells+=("$path") ;; esac
+	done
+	[ "${#shells[@]}" -gt 0 ] || return 0
+	require_tool "$CHECK" shellcheck "$SHELLCHECK_MIN_VERSION" 'install shellcheck (https://www.shellcheck.net)' shellcheck --version
+	require_tool "$CHECK" shfmt "$SHFMT_MIN_VERSION" 'install shfmt (https://github.com/mvdan/sh)' shfmt --version
+	shellcheck --external-sources --severity=style "${shells[@]}" || fail "shellcheck found problems"
+	shfmt --diff "${shells[@]}" || fail "shfmt would reformat these files; run: shfmt --write <file>"
+}
+
+# Fail on any private-data shape; print path:line:match so it is fixed in one
+# pass. Allowed public matches are filtered per match, so an allowed value on
+# a line cannot hide a private one next to it.
+check_private_data() {
+	local pattern hits found=0 path scan=()
+	for path in "${files[@]}"; do
+		[[ "$path" =~ $PRIVATE_SKIP_RE ]] || scan+=("$path")
+	done
+	[ "${#scan[@]}" -gt 0 ] || return 0
+	for pattern in "${PRIVATE_PATTERNS[@]}"; do
+		hits="$(grep -n -o -I -i -E -- "$pattern" "${scan[@]}" | awk -v allowed="$PRIVATE_ALLOWED_RE" '{
+			match_text = $0
+			sub(/^[^:]*:[0-9]+:/, "", match_text)
+			if (match_text !~ allowed) print
+		}' || true)"
+		if [ -n "$hits" ]; then
+			echo >&2 "❌ $CHECK: private-data pattern '$pattern' matched:"
+			printf '%s\n' "$hits" | sed 's/^/   /' >&2
+			found=1
+		fi
+	done
+	[ "$found" -eq 0 ] || fail "remove the private data above (use neutral words such as \"the user\" or example.com)"
+}
+
+# This repository's packages, exactly as its lockfile pins them: the judged
+# tree is built and smoke-tested with them, never with whatever is installed.
+install_packages() {
+	has_file "$LOCKFILE" || return 0
+	require_tool "$CHECK" pnpm "$PNPM_MIN_VERSION" 'install pnpm (https://pnpm.io/installation)' pnpm --version
+	run_with_timeout "$PNPM_INSTALL_TIMEOUT_SECONDS" pnpm install --frozen-lockfile --reporter=silent ||
+		fail "cannot install the packages from $LOCKFILE"
+}
+
+# The buzz-app clone the plugin builds with: BUZZ_APP_DIR, else this
+# checkout's link. A full check without it cannot build the plugin.
+toolchain_clone() {
+	if [ -n "${BUZZ_APP_DIR:-}" ]; then
+		printf '%s\n' "$BUZZ_APP_DIR"
+	elif [ -L "$REPO_TOP/$TOOLCHAIN_LINK" ]; then
+		(cd "$REPO_TOP/$TOOLCHAIN_LINK" && pwd -P)
+	else
+		return 1
+	fi
+}
+
+# Type check, build (with the bundle contract in vite.config.ts) and the
+# end-to-end smoke run against the real `opencode acp`.
+check_build_and_smoke() {
+	has_file "$BUILD_PLUGIN" || return 0
+	local clone
+	clone="$(toolchain_clone)" || fail "no buzz-app clone: set BUZZ_APP_DIR or run $LINK_TOOLCHAIN <clone> (README.md, Build)"
+	has_file "$LINK_TOOLCHAIN" || fail "$BUILD_PLUGIN exists but $LINK_TOOLCHAIN is missing"
+	require_node
+	if [ "$(cd "$target/$TOOLCHAIN_LINK" 2>/dev/null && pwd -P)" != "$(cd "$clone" && pwd -P)" ]; then
+		"./$LINK_TOOLCHAIN" "$clone" >/dev/null || fail "cannot link the buzz-app clone $clone"
+	fi
+	install_packages
+	node "$BUILD_PLUGIN" || fail "the plugin does not type check or build"
+	has_file "$SMOKE" || return 0
+	require_tool "$CHECK" opencode "$OPENCODE_MIN_VERSION" 'install OpenCode (https://opencode.ai)' opencode --version
+	run_with_timeout "$SMOKE_TIMEOUT_SECONDS" node "$SMOKE" || fail "smoke run failed"
+}
+
+# The generic hook lints only staged Markdown; at push the whole tree is judged.
+check_markdown() {
+	local list
+	list="$(files_with md MD markdown)"
+	[ -n "$list" ] || return 0
+	require_tool "$CHECK" markdownlint-cli2 "$MARKDOWNLINT_MIN_VERSION" 'install markdownlint-cli2' markdownlint-cli2 --help
+	# shellcheck disable=SC2086  # one path per word
+	markdownlint-cli2 --config "$HOOK_LIB/markdownlint.jsonc" -- $list || fail "markdownlint found problems"
+}
+
+check_complexity() {
+	local list
+	list="$(files_with js mjs cjs ts)"
+	[ -n "$list" ] || return 0
+	require_tool "$CHECK" lizard "$LIZARD_MIN_VERSION" 'install lizard (pipx install lizard)' lizard --version
+	# shellcheck disable=SC2086  # one path per word
+	lizard --CCN "$LIZARD_MAX_CCN" --length "$LIZARD_MAX_LENGTH" --warnings_only $list ||
+		fail "lizard: a function is above CCN $LIZARD_MAX_CCN or $LIZARD_MAX_LENGTH lines"
+}
+
+# The registry JavaScript rule set adds rules (DOM XSS, insecure randomness,
+# ...) to the generic hook's vendored offline rules.
+check_semgrep() {
+	local list
+	list="$(files_with js mjs cjs ts)"
+	[ -n "$list" ] || return 0
+	require_tool "$CHECK" semgrep "$SEMGREP_MIN_VERSION" 'install semgrep (https://semgrep.dev)' semgrep --version
+	# shellcheck disable=SC2086  # one path per word
+	run_with_timeout "$SEMGREP_TIMEOUT_SECONDS" semgrep scan --config "$SEMGREP_REGISTRY_CONFIG" \
+		--metrics=off --disable-version-check --error --quiet -- $list ||
+		fail "semgrep $SEMGREP_REGISTRY_CONFIG failed (finding, network error or timeout)"
+}
+
+# Second, independent secret engine next to gitleaks, plus misconfiguration
+# rules.
+check_trivy() {
+	require_tool "$CHECK" trivy "$TRIVY_MIN_VERSION" 'install trivy (https://trivy.dev)' trivy --version
+	run_with_timeout "$TRIVY_TIMEOUT_SECONDS" trivy fs --quiet --scanners secret,misconfig \
+		--skip-dirs .git --skip-dirs "$TOOLCHAIN_LINK" --skip-dirs node_modules --skip-dirs dist \
+		--exit-code 1 --timeout "${TRIVY_TIMEOUT_SECONDS}s" . ||
+		fail "trivy found secrets or misconfigurations (or failed to run)"
+}
+
+# Paths are passed word by word above; a path with a space would split.
+for path in "${files[@]}"; do
+	case "$path" in *[[:space:]]*) fail "path with white space is not supported: $path" ;; esac
+done
+
+check_js_syntax
+check_json
+check_manifest
+check_shell
+check_private_data
+if [ "$quick" -eq 1 ]; then
+	exit 0
+fi
+check_markdown
+check_complexity
+check_semgrep
+check_trivy
+check_build_and_smoke
+echo "✅ $CHECK: all checks passed for $target"
