@@ -1,0 +1,23 @@
+{
+  "id": "sagmans.opencode",
+  "name": "OpenCode",
+  "apiVersion": 1,
+  "description": "Run local OpenCode agents in Buzz, with any provider OpenCode supports.",
+  "discovery": {
+    "category": "agents",
+    "tags": ["code", "coding-agents"]
+  },
+  "host": {
+    "processes": [{ "id": "opencode", "program": "opencode", "args": ["acp"] }],
+    "commands": [
+      {
+        "id": "models",
+        "program": "opencode",
+        "args": ["models"],
+        "maxOutputBytes": 262144
+      }
+    ],
+    "mcp": true,
+    "files": true
+  }
+}

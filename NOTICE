@@ -1,0 +1,19 @@
+buzz-plugin-opencode
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This product includes software adapted from Buzz (block/buzz-app),
+Copyright 2026 Block, Inc., licensed under the Apache License, Version 2.0:
+https://github.com/block/buzz-app
+
+The plugin bundles buzz-app modules unchanged at the revision in
+src/constants.ts (BUZZ_APP_REV). These files adapt buzz-app code from its
+bundled Goose agent type; each names its source in a header comment:
+
+- src/runtime.ts: from src/bundled/goose/runtime.ts.
+- src/sessions.ts: from src/bundled/goose/sessions.ts.
+- src/run.ts: from src/bundled/goose/run.ts.
+- src/settings.ts: from src/bundled/goose/settings.ts.
+- src/index.ts: the agent type wiring follows src/bundled/goose/index.ts.
+
+OpenCode is a separate program by its own authors (https://opencode.ai).
+This plugin does not include it; it starts the copy the user installed.
