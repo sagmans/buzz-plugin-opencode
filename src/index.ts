@@ -5,10 +5,13 @@
 // plugin (src/bundled/goose/index.ts), the app's own ACP agent type.
 import { repositoriesContext } from "@buzz/features/communities/repositories";
 import type { PluginModule } from "@buzz/plugins/api";
+import { createActivity } from "./activity";
+import { AcpHistory, SessionLog } from "./history";
 import { OpenCodeIcon } from "./icon";
 import { ModelList } from "./models";
 import { bindReact } from "./react-host";
 import { openCodeRun } from "./run";
+import { OpenCodeProcess } from "./opencode";
 import { type Config, config, DEFAULT_CONFIG, OpenCodeRuntime } from "./runtime";
 import { createViews } from "./views";
 
@@ -19,8 +22,40 @@ const PLUGIN_ID = "sagmans.opencode";
 /** The runtime name a shared or exported agent records. */
 const SHARED_RUNTIME = "opencode";
 const TITLE = "OpenCode";
+/** This plugin's local storage key for the sessions its agents ran. A new
+ * shape needs a new version suffix: saved agents read this one. */
+const HISTORY_KEY = "sagmans.opencode.history.v1";
 
 export const inject = ["react", "agents", "host"];
+/** The agent type's sessions list. (As buzz-app's Goose plugin lists them.) */
+const sessionList = (runtime: OpenCodeRuntime) => ({
+  list: (key: string) => {
+    const live = runtime.sessions(key);
+    const busy = new Map(live.map((view) => [view.key, view.busy]));
+    const used = new Map(
+      runtime.conversations(key).map(({ key, at }) => [key, at]),
+    );
+    // Open ones are listed even when saving them failed. A one-off turn
+    // joins no conversation.
+    for (const { key, at } of live) if (at !== undefined) used.set(key, at);
+    return [...used]
+      .sort(([, a], [, b]) => b - a)
+      .map(([key, at]) => {
+        const [channelId = key, root] = key.split("/");
+        const working = busy.get(key);
+        return {
+          channelId,
+          ...(root && { root }),
+          at,
+          ...(working !== undefined && {
+            status: working ? "Working" : "Idle",
+          }),
+        };
+      });
+  },
+  subscribe: (listener: () => void) => runtime.subscribe(listener),
+});
+
 export const apply: PluginModule["apply"] = (ctx) => {
   const { agents, host } = ctx;
   // Before any view renders: the bundled app components use Buzz's React.
@@ -39,6 +74,17 @@ export const apply: PluginModule["apply"] = (ctx) => {
   );
   const models = new ModelList((id) => host.runCommand(id));
   const { Create, CreateModel, SettingsTab } = createViews(models);
+  const log = new SessionLog(localStorage, HISTORY_KEY);
+  const ActivityTab = createActivity(
+    TITLE,
+    runtime,
+    new AcpHistory(
+      { spawn: host.spawn.bind(host), resolveDirectory: host.resolveDirectory.bind(host) },
+      (spawn, launch) => OpenCodeProcess.start(spawn, launch),
+    ),
+    log,
+    (saved) => config(saved).workspace,
+  );
   const sync = () => {
     const snapshot = agents.snapshot();
     if (snapshot.status === "loading") return;
@@ -46,8 +92,16 @@ export const apply: PluginModule["apply"] = (ctx) => {
   };
   const unsubscribe = agents.subscribe(sync);
   sync();
+  const stopLog = runtime.subscribe(() => {
+    const snapshot = agents.snapshot();
+    if (snapshot.status === "loading") return;
+    for (const agent of snapshot.running)
+      if (agent.type === typeKey)
+        log.record(agent.key, runtime, config(agent.config).workspace);
+  });
   ctx.effect(() => () => {
     unsubscribe();
+    stopLog();
     runtime.dispose();
   });
 
@@ -81,33 +135,7 @@ export const apply: PluginModule["apply"] = (ctx) => {
       };
     },
     summary: (agent) => config(agent.config).model || TITLE,
-    sessions: {
-      list: (key) => {
-        const live = runtime.sessions(key);
-        const busy = new Map(live.map((view) => [view.key, view.busy]));
-        const used = new Map(
-          runtime.conversations(key).map(({ key, at }) => [key, at]),
-        );
-        // Open ones are listed even when saving them failed. A one-off turn
-        // joins no conversation. (As buzz-app's Goose plugin lists them.)
-        for (const { key, at } of live) if (at !== undefined) used.set(key, at);
-        return [...used]
-          .sort(([, a], [, b]) => b - a)
-          .map(([key, at]) => {
-            const [channelId = key, root] = key.split("/");
-            const working = busy.get(key);
-            return {
-              channelId,
-              ...(root && { root }),
-              at,
-              ...(working !== undefined && {
-                status: working ? "Working" : "Idle",
-              }),
-            };
-          });
-      },
-      subscribe: (listener) => runtime.subscribe(listener),
-    },
+    sessions: sessionList(runtime),
     tabs: [
       {
         id: "settings",
@@ -115,6 +143,12 @@ export const apply: PluginModule["apply"] = (ctx) => {
         role: "settings",
         splitSettings: true,
         component: SettingsTab,
+      },
+      {
+        id: "activity",
+        title: "Activity",
+        role: "activity",
+        component: ActivityTab,
       },
     ],
     models: (agent) => models.picks(config(agent.config).model),
