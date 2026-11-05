@@ -8,8 +8,10 @@ own Claude, Codex, Goose and Pi agents do.
 
 The plugin `sagmans.opencode` adds the agent type "OpenCode".
 
-- All OpenCode agents share one `opencode acp` process on your computer.
-  Each thread (or channel) that an agent works in is one OpenCode session.
+- Each thread (or channel) that an agent works in gets an `opencode acp`
+  process of its own on your computer, and is one OpenCode session in it.
+  A process of its own keeps each thread's Buzz tool calls routed to that
+  thread; the process stops when its thread goes idle.
 - OpenCode gets the Buzz tools (read, send, react and the others) over a
   local MCP server on loopback. It never gets an agent key: the app signs
   each message with the agent's key.
@@ -31,7 +33,7 @@ The plugin `sagmans.opencode` adds the agent type "OpenCode".
 ```mermaid
 flowchart TB
   Relay["Buzz relay"] -- "mention" --> App["Buzz desktop app + plugin"]
-  App -- "ACP over stdio" --> OC["opencode acp (one process)"]
+  App -- "ACP over stdio" --> OC["opencode acp (one process per thread)"]
   OC -- "HTTP MCP, loopback only" --> Tools["Buzz tools in the app"]
   Tools -- "signed by the agent key" --> Relay
 ```

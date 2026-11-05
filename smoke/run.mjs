@@ -182,6 +182,12 @@ function parseArgs(argv) {
 
 const log = (step, detail = {}) => console.log(JSON.stringify({ step, ...detail }));
 const sleep = (ms) => new Promise((settled) => setTimeout(settled, ms));
+/** How often each MCP method was called, to see what one turn used. */
+const counted = (calls) =>
+  calls.reduce((counts, method) => {
+    counts[method] = (counts[method] ?? 0) + 1;
+    return counts;
+  }, {});
 
 /** `~/…` against the throwaway home, as the app resolves it against the real one. */
 function expand(path, home) {
@@ -419,12 +425,35 @@ function recordingHandle(agent, published) {
   };
 }
 
-/** One mention as the owner in a new thread, settled. Throws a SmokeError
- * with `retry: true` only for a model miss (see TURN_ATTEMPTS). */
-async function mentionOnce(type, agent, marker, effort) {
+/** Passes when the turn used its session's own Buzz tools: a new session lists
+ * the tools, and one that runs again calls them. Without either, OpenCode
+ * never had this session's own. */
+function checkToolsUsed(before, reuse) {
+  const after = counted(mcpCalls);
+  const method = reuse ? "tools/call" : "tools/list";
+  if ((after[method] ?? 0) <= (before[method] ?? 0))
+    throw new SmokeError("OpenCode did not use the session's Buzz tools", { mcpCalls });
+}
+
+/** Passes when the marker answer arrived in the channel, in `root`'s thread.
+ * A wrong thread can be a model miss (retry); a wrong channel is never one. */
+function checkAnswer(published, marker, root, result) {
+  const answer = published.find((item) => item.kind === 9 && item.content.includes(marker));
+  if (!answer) throw new SmokeError("the agent did not send the marker", { published: published.length, result, retry: true });
+  if (!answer.tags.some(([key, value]) => key === "h" && value === CHANNEL))
+    throw new SmokeError("the answer is not in the channel", { tags: answer.tags });
+  if (!answer.tags.some(([key, value]) => key === "e" && value === root))
+    throw new SmokeError("the answer is not in the thread", { tags: answer.tags, retry: true });
+}
+
+/** One mention as the owner in a thread, settled. `reuse` is a thread that was
+ * mentioned before, so the turn runs in the session the runtime already opened
+ * for it. Throws a SmokeError with `retry: true` only for a model miss (see
+ * TURN_ATTEMPTS). */
+async function mentionOnce(type, agent, marker, effort, reuse) {
   const published = [];
-  const root = randomBytes(32).toString("hex");
-  const listedBefore = mcpCalls.filter((method) => method === "tools/list").length;
+  const root = reuse ?? randomBytes(32).toString("hex");
+  const callsBefore = counted(mcpCalls);
   // A free model may route the reply on its own; the prompt names the
   // tool call so that a top-level post fails only on a real routing bug.
   const event = {
@@ -450,15 +479,8 @@ async function mentionOnce(type, agent, marker, effort) {
   log("handed-over");
   const result = await done;
   log("settled", { result });
-  // Each new session lists the tools; without that, OpenCode never had them.
-  if (mcpCalls.filter((method) => method === "tools/list").length === listedBefore)
-    throw new SmokeError("OpenCode did not list the Buzz tools", { mcpCalls });
-  const answer = published.find((item) => item.kind === 9 && item.content.includes(marker));
-  if (!answer) throw new SmokeError("the agent did not send the marker", { published: published.length, result, retry: true });
-  if (!answer.tags.some(([key, value]) => key === "h" && value === CHANNEL))
-    throw new SmokeError("the answer is not in the channel", { tags: answer.tags });
-  if (!answer.tags.some(([key, value]) => key === "e" && value === root))
-    throw new SmokeError("the answer is not in the thread", { tags: answer.tags, retry: true });
+  checkToolsUsed(callsBefore, reuse);
+  checkAnswer(published, marker, root, result);
   const sessions = type.sessions.list(AGENT_KEY);
   if (!sessions.some((session) => session.root === root))
     throw new SmokeError("the thread's session is not listed", { sessions });
@@ -1301,16 +1323,40 @@ function pickedLevel(picks, saved) {
 }
 
 /** Passes when one of TURN_ATTEMPTS mentions gets the marker reply in its
- * thread with its session listed; see TURN_ATTEMPTS for what is retried. */
-async function mentionAndCheck(type, agent, effort) {
+ * thread with its session listed; see TURN_ATTEMPTS for what is retried.
+ * `reuse` runs the turn in a thread that was mentioned before. */
+async function mentionAndCheck(type, agent, effort, reuse) {
   for (let attempt = 1; ; attempt++) {
     try {
-      return await mentionOnce(type, agent, `${MARKER}-${attempt}`, effort);
+      return await mentionOnce(type, agent, `${MARKER}-${attempt}`, effort, reuse);
     } catch (error) {
       if (!(error instanceof SmokeError) || !error.context?.retry || attempt >= TURN_ATTEMPTS) throw error;
       log("model-miss", { attempt, of: TURN_ATTEMPTS, error: error.message });
     }
   }
+}
+
+/** The session the record lists for a thread: the same one every turn in it
+ * runs in, which is what makes a later turn's tools the ones it opened with. */
+function sessionOf(type, agent, root) {
+  const { history } = type.tabs.find((tab) => tab.id === "activity").component;
+  return history.find(agent.key, { channelId: CHANNEL, root })?.sessionId;
+}
+
+/** Passes when a thread mentioned before another one still answers in itself,
+ * in the session it already had. Every session's Buzz tools reach OpenCode as
+ * one MCP server, and OpenCode holds one server per name for its whole process:
+ * a name that every session shares leaves all the older ones with the newest
+ * one's tools, so their sends post in its thread, not their own. */
+async function checkSessionRouting(type, agent, effort, first) {
+  const before = sessionOf(type, agent, first);
+  if (!before) throw new SmokeError("the first thread has no session on record", { first });
+  await mentionAndCheck(type, agent, effort);
+  await mentionAndCheck(type, agent, effort, first);
+  const after = sessionOf(type, agent, first);
+  if (after !== before)
+    throw new SmokeError("the thread's second turn ran in another session", { before, after });
+  log("routing", { sessions: type.sessions.list(AGENT_KEY).length, first: before });
 }
 
 /** The owner's OpenCode database, where `opencode auth login` keeps logins.
@@ -1439,6 +1485,7 @@ async function main() {
     const effort = pickedLevel(picks, options.model);
     const root = await mentionAndCheck(type, agent, effort);
     if (effort) checkEffortPick(effort);
+    await checkSessionRouting(type, agent, effort, root);
     await checkCompact(type, agent, root);
     const sessionId = checkActivity(type, agent, root, MARKER);
     await checkLiveRead({ type, agent }, { sessionId, channelId: CHANNEL, root }, MARKER);

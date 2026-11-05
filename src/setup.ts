@@ -6,7 +6,7 @@
 // session's model, so each read runs a short-lived `opencode acp` and moves a
 // throwaway session across the models. That process serves no Buzz tools and
 // runs no model. Its server does not resume interrupted turns (only OpenCode's
-// managed server does), so it cannot disturb the shared process's turns.
+// managed server does), so it cannot disturb the conversation processes' turns.
 import type {
   AgentProviderSnapshot,
   Models,

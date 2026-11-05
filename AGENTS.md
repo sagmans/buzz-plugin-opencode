@@ -5,9 +5,9 @@ Guidance for coding agents that work in this repository.
 ## Project
 
 A Buzz desktop plugin (plugin API version 1) that adds the agent type
-"OpenCode". OpenCode agents run in one local `opencode acp` process and use
-the Buzz tools over loopback MCP. The README describes the behavior, the
-install and the security model. Keep it true when you change behavior.
+"OpenCode". OpenCode agents run in one local `opencode acp` process per
+conversation and use the Buzz tools over loopback MCP. The README describes
+the behavior and the install. Keep it true when you change behavior.
 
 | Path | Purpose |
 | --- | --- |
