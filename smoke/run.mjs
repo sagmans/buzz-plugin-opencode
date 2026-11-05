@@ -425,15 +425,22 @@ function recordingHandle(agent, published) {
   };
 }
 
-/** Passes when the turn used its session's own Buzz tools: a new session lists
- * the tools, and one that runs again calls them. Without either, OpenCode
- * never had this session's own. */
-function checkToolsUsed(before, reuse) {
+/** Passes when the turn used its session's own Buzz tools by `method`'s count:
+ * a new session lists the tools, and a turn in a known one calls them. Without
+ * either, OpenCode never had this session's own. */
+function checkToolsUsed(before, method) {
   const after = counted(mcpCalls);
-  const method = reuse ? "tools/call" : "tools/list";
   if ((after[method] ?? 0) <= (before[method] ?? 0))
-    throw new SmokeError("OpenCode did not use the session's Buzz tools", { mcpCalls });
+    throw new SmokeError("OpenCode did not use the session's Buzz tools", { mcpCalls, method });
 }
+
+/** The mention texts. The plain one asks for the marker; the subagent one asks
+ * a child session to send it: a subagent's tool call must also reach the
+ * conversation's own Buzz tools, so it lands in this thread. */
+const markerAsk = (marker) =>
+  `reply in this thread with one message that contains the exact text ${marker}. Call the send tool once with only the text argument: no channel and no reply, so it lands in this thread. Then stop.`;
+const subagentAsk = (marker) =>
+  `use the task tool once to run a subagent. Give the subagent exactly this job: call the send tool once with only the text argument set to the exact text ${marker}, with no channel and no reply, then stop. Do not call send yourself. Stop when the subagent finishes.`;
 
 /** Passes when the marker answer arrived in the channel, in `root`'s thread.
  * A wrong thread can be a model miss (retry); a wrong channel is never one. */
@@ -448,9 +455,9 @@ function checkAnswer(published, marker, root, result) {
 
 /** One mention as the owner in a thread, settled. `reuse` is a thread that was
  * mentioned before, so the turn runs in the session the runtime already opened
- * for it. Throws a SmokeError with `retry: true` only for a model miss (see
- * TURN_ATTEMPTS). */
-async function mentionOnce(type, agent, marker, effort, reuse) {
+ * for it; `ask` builds the mention text. Throws a SmokeError with `retry: true`
+ * only for a model miss (see TURN_ATTEMPTS). */
+async function mentionOnce(type, agent, marker, effort, reuse, ask = markerAsk) {
   const published = [];
   const root = reuse ?? randomBytes(32).toString("hex");
   const callsBefore = counted(mcpCalls);
@@ -461,7 +468,7 @@ async function mentionOnce(type, agent, marker, effort, reuse) {
     kind: 9,
     pubkey: OWNER,
     created_at: Math.floor(Date.now() / 1000),
-    content: `@Smoke reply in this thread with one message that contains the exact text ${marker}. Call the send tool once with only the text argument: no channel and no reply, so it lands in this thread. Then stop.`,
+    content: `@Smoke ${ask(marker)}`,
     tags: [["h", CHANNEL], ["p", AGENT]],
     sig: "",
   };
@@ -479,7 +486,7 @@ async function mentionOnce(type, agent, marker, effort, reuse) {
   log("handed-over");
   const result = await done;
   log("settled", { result });
-  checkToolsUsed(callsBefore, reuse);
+  checkToolsUsed(callsBefore, reuse || ask !== markerAsk ? "tools/call" : "tools/list");
   checkAnswer(published, marker, root, result);
   const sessions = type.sessions.list(AGENT_KEY);
   if (!sessions.some((session) => session.root === root))
@@ -1324,11 +1331,12 @@ function pickedLevel(picks, saved) {
 
 /** Passes when one of TURN_ATTEMPTS mentions gets the marker reply in its
  * thread with its session listed; see TURN_ATTEMPTS for what is retried.
- * `reuse` runs the turn in a thread that was mentioned before. */
-async function mentionAndCheck(type, agent, effort, reuse) {
+ * `reuse` runs the turn in a thread that was mentioned before; `ask` builds
+ * the mention text. */
+async function mentionAndCheck(type, agent, effort, reuse, ask) {
   for (let attempt = 1; ; attempt++) {
     try {
-      return await mentionOnce(type, agent, `${MARKER}-${attempt}`, effort, reuse);
+      return await mentionOnce(type, agent, `${MARKER}-${attempt}`, effort, reuse, ask);
     } catch (error) {
       if (!(error instanceof SmokeError) || !error.context?.retry || attempt >= TURN_ATTEMPTS) throw error;
       log("model-miss", { attempt, of: TURN_ATTEMPTS, error: error.message });
@@ -1357,6 +1365,14 @@ async function checkSessionRouting(type, agent, effort, first) {
   if (after !== before)
     throw new SmokeError("the thread's second turn ran in another session", { before, after });
   log("routing", { sessions: type.sessions.list(AGENT_KEY).length, first: before });
+}
+
+/** Passes when a subagent's send lands in its own thread: the child
+ * session's Buzz tools are the conversation's own, so a child turn cannot
+ * post elsewhere. */
+async function checkSubagent(type, agent, effort) {
+  const root = await mentionAndCheck(type, agent, effort, undefined, subagentAsk);
+  log("subagent", { root });
 }
 
 /** The owner's OpenCode database, where `opencode auth login` keeps logins.
@@ -1486,6 +1502,7 @@ async function main() {
     const root = await mentionAndCheck(type, agent, effort);
     if (effort) checkEffortPick(effort);
     await checkSessionRouting(type, agent, effort, root);
+    await checkSubagent(type, agent, effort);
     await checkCompact(type, agent, root);
     const sessionId = checkActivity(type, agent, root, MARKER);
     await checkLiveRead({ type, agent }, { sessionId, channelId: CHANNEL, root }, MARKER);
