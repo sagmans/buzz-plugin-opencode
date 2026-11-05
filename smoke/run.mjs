@@ -153,6 +153,10 @@ const SESSION_READ_LIMIT = 10;
 const OLD_SESSIONS = 12;
 const EXIT_USAGE = 64;
 
+const PLUGIN_ID = "sagmans.opencode";
+/** How the bundle carries the Settings icon: one file, no asset to load. */
+const ICON_DATA_URL = "data:image/png;base64,";
+
 /** A smoke step that failed, with the state needed to see why. */
 class SmokeError extends Error {
   constructor(message, context = {}) {
@@ -805,6 +809,59 @@ async function checkHarnessDiscovery(stub, loaded) {
 
 /** What the Activity tab shows of a session OpenCode reads back. The stand-in
  * replays it; no OpenCode and no model run. */
+/** A stand-in for the app's Settings row: this smoke has no DOM library, and the
+ * build checks the real page's markup (ICON_SLOT_MARKS). */
+function fakeIconSlot() {
+  const slot = {
+    attributes: new Set(),
+    image: null,
+    setAttribute: (name) => slot.attributes.add(name),
+    removeAttribute: (name) => slot.attributes.delete(name),
+    append: (image) => {
+      image.parentElement = slot;
+      image.remove = () => (slot.image = null);
+      slot.image = image;
+    },
+    querySelector: (selector) => (selector.startsWith("img") ? slot.image : glyph),
+  };
+  const glyph = {
+    parentElement: slot,
+    style: {
+      display: "",
+      removeProperty: () => (glyph.style.display = ""),
+    },
+  };
+  return { slot, glyph };
+}
+
+/** Passes when the plugin puts its artwork on its own Settings row, on the app's
+ * tile, and stopping the plugin puts the app's generic icon back. */
+async function checkSettingsIcon(host) {
+  const { slot, glyph } = fakeIconSlot();
+  const row = { getAttribute: () => "false", querySelector: () => glyph };
+  const anchor = { closest: () => row };
+  const page = globalThis.document;
+  globalThis.document = {
+    ...page,
+    body: {},
+    getElementById: (id) => (id === `plugin-description-${PLUGIN_ID}` ? anchor : null),
+    createElement: () => ({ setAttribute() {}, addEventListener() {} }),
+    querySelectorAll: () => (slot.image ? [slot.image] : []),
+  };
+  try {
+    const { effects } = await loadPlugin(host, "", {});
+    if (!slot.image?.src?.startsWith(ICON_DATA_URL)) throw new SmokeError("no inline icon on the row", { src: slot.image?.src?.slice(0, 32) });
+    if (!slot.attributes.has("data-branded")) throw new SmokeError("the icon is not on the app's tile");
+    if (glyph.style.display !== "none") throw new SmokeError("the generic icon still shows");
+    for (const cleanup of effects) cleanup?.();
+    if (slot.image || slot.attributes.has("data-branded") || glyph.style.display === "none")
+      throw new SmokeError("the icon stayed after the plugin stopped");
+  } finally {
+    globalThis.document = page;
+  }
+  log("settings-icon", { checked: "row, tile, removal" });
+}
+
 async function checkStubHarnessRead(host) {
   const stub = new StubOpenCode();
   const sessionId = "ses_read";
@@ -1256,7 +1313,12 @@ async function main() {
   globalThis.localStorage = memoryStorage();
   // The bundled transcript's text helpers make one element when they load, as
   // browsers allow; the smoke renders nothing, so a bare element is enough.
-  globalThis.document ??= { createElement: () => ({}) };
+  globalThis.document ??= { createElement: () => ({}), body: {}, getElementById: () => null, querySelectorAll: () => [] };
+  // The Settings icon watches the page; here no page changes.
+  globalThis.MutationObserver ??= class {
+    observe() {}
+    disconnect() {}
+  };
   const deadline = setTimeout(() => {
     console.error(JSON.stringify({ step: "timeout", ms: RUN_TIMEOUT_MS }));
     process.exit(EXIT_FAIL);
@@ -1283,6 +1345,7 @@ async function main() {
   for (const signal of CLEANUP_SIGNALS)
     process.on(signal, () => process.exit(SIGNAL_EXIT_BASE + constants.signals[signal]));
   try {
+    await checkSettingsIcon(host);
     await checkStubHarnessRead(host);
     if (options.stubOnly) return;
     seedCredential(env, options.model);

@@ -6,6 +6,7 @@
 // process adapter and sessions module for `./opencode` and `./sessions`
 // (vite.config.ts, SWAPS). The wiring follows buzz-app's bundled Goose
 // plugin (src/bundled/goose/index.ts), the app's own ACP agent type.
+import { showSettingsIcon } from "./settings-icon";
 import type { Spawn } from "@buzz/features/agent-harness/acp/types";
 import { repositoriesContext } from "@buzz/features/communities/repositories";
 import type { AgentType } from "@buzz/features/agents/service";
@@ -141,10 +142,10 @@ export const apply: PluginModule["apply"] = (ctx) => {
   const { agents, host } = ctx;
   // Before any view renders: the bundled app components use Buzz's React.
   bindReact(ctx.react);
+  ctx.effect(showSettingsIcon);
   // Only the desktop app can start `opencode acp`; no unusable type elsewhere.
-  // These are all the host methods the Goose runtime needs: with one missing it
-  // would stop each turn with its own "goose agents run only in the desktop
-  // app", which must never reach an owner of an OpenCode agent.
+  // The Goose runtime needs all these: without one it stops each turn with its
+  // own "goose agents run only in the desktop app", wrong for an OpenCode owner.
   if (!host.spawn || !host.serveMcp || !host.resolveDirectory || !host.readFile)
     return;
   const typeKey = `${ctx.pluginOwner?.id ?? PLUGIN_ID}/${TYPE_ID}`;

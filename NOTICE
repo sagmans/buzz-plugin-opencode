@@ -36,7 +36,7 @@ MIT License (@ungap/structured-clone: ISC).
 OpenCode is a separate program by its own authors (https://opencode.ai).
 This plugin does not include it; it starts the copy the user installed.
 
-src/icon.tsx draws the OpenCode mark from OpenCode's favicon
+src/icon.tsx and icon.png draw the OpenCode mark from OpenCode's favicon
 (packages/app/public/favicon-v3.svg in https://github.com/anomalyco/opencode),
 with rounded tile corners. That file is licensed under the MIT License:
 

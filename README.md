@@ -138,6 +138,10 @@ shows as its alt text and does not load, and raw HTML does not run.
 
 ## Limits
 
+- Buzz draws icons only for its bundled plugins, so this plugin adds its own to
+  its row and details panel in Settings, by editing that page. The build checks
+  the page at the pinned app revision. If a newer app changes the page, the app's
+  generic icon comes back; nothing else breaks.
 - OpenCode runs with your own OpenCode config, providers and MCP servers.
   The plugin does not change them.
 - The app allows every OpenCode permission request. There is no approval

@@ -36,6 +36,7 @@ function plainBuildAtLoad(): Plugin {
 const BUZZ_APP_LINK = "buzz-app";
 const BUNDLE_NAME = "plugin.js";
 const MANIFEST = "manifest.json";
+const ICON = "icon.png";
 const CSS_SUFFIX = ".css";
 const ENTRY = resolve(here, "src/index.ts");
 /** Imports that name a file, a builtin or a module Vite made up, not a package. */
@@ -199,6 +200,7 @@ function pluginContract(): Plugin {
       if (WORKER.test(chunk.code)) this.error("The bundle holds a web worker, which Plugin API v1 cannot load");
       if (!chunk.exports.includes("apply")) this.error("The entry must export apply(ctx)");
       this.emitFile({ type: "asset", fileName: MANIFEST, source: readFileSync(resolve(here, MANIFEST), "utf8") });
+      this.emitFile({ type: "asset", fileName: ICON, source: readFileSync(resolve(here, ICON)) });
     } },
   };
 }

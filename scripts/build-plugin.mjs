@@ -107,11 +107,35 @@ function checkRevision() {
   return pinned;
 }
 
+/** What src/settings-icon.ts relies on in the app's Settings page. Pinned here so
+ * that a new BUZZ_APP_REV which changes that page stops the build, not only the
+ * icon. */
+const ICON_SLOT_MARKS = [
+  "data-plugin-id={id}",
+  "`plugin-description-",
+  'id="plugin-details"',
+  "<SquaresFourIcon",
+  "data-branded=",
+];
+
+/** Stops the build when the app's Settings page no longer has what
+ * src/settings-icon.ts looks for. */
+function checkIconSlot() {
+  const page = readFileSync(join(ROOT, "buzz-app", "src", "app", "Settings.tsx"), "utf8");
+  const missing = ICON_SLOT_MARKS.filter((mark) => !page.includes(mark));
+  if (missing.length)
+    throw new BuildError(
+      `the app's Settings page changed, src/settings-icon.ts must follow: ${missing.join(", ")}`,
+      { exit: EXIT_CONFIG },
+    );
+}
+
 function main() {
   const options = parseArgs(process.argv.slice(2));
   checkLink();
   checkInstall();
   const rev = checkRevision();
+  checkIconSlot();
   const bin = (name) => join(OWN_MODULES, ".bin", name);
   run("tsc", bin("tsc"), ["-p", join(ROOT, "tsconfig.json")], { timeout: TSC_TIMEOUT_MS });
   console.log(`typecheck ok (buzz-app ${rev.slice(0, 12)})`);

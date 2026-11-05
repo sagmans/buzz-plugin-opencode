@@ -22,6 +22,7 @@ install and the security model. Keep it true when you change behavior.
 | `src/session-read.ts`, `src/transcript.ts` | Shared copies: the session log, the short-lived `session/load` read with its limits, and a replay's turns with the record's times and steers. Keep their code the same as the other ACP plugin's, except import paths and formatting. |
 | `src/activity.tsx` | The Activity tab, from the app's own components: the read first, the record for the running session and as the fallback. |
 | `src/constants.ts` | `BUZZ_APP_REV`, the buzz-app revision the bundle is built from. |
+| `src/settings-icon.ts`, `icon.png` | The plugin's icon in Settings, which the app does not draw for an external plugin. |
 | `scripts/build-plugin.mjs`, `scripts/link-toolchain`, `vite.config.ts` | Build: checks the clone, type-checks, bundles one `dist/plugin.js`. |
 | `smoke/run.mjs` | End-to-end smoke: the built plugin, a Node host stand-in, real `opencode acp`. |
 | `smoke/stub.mjs` | The stand-in `opencode acp`: session reads that real OpenCode cannot show on demand. No model runs. |
