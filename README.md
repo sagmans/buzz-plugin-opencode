@@ -160,7 +160,9 @@ shows as its alt text and does not load, and raw HTML does not run.
   the tab. The plugin API does not give that part to plugins.
 - A static WebP picture with a color profile or a rotation uploads as a PNG
   with the same pixels, not as a WebP. The app encodes WebP in a web worker,
-  and an installed plugin is one file. Other pictures keep their format.
+  and an installed plugin is one file. Other pictures keep their format. A PNG
+  above the 50 MiB image limit fails with a size error: a very noisy picture
+  of 18 million pixels did. Use a smaller picture.
 - The Activity tab reads only logged sessions, in the workspace the log names,
   because OpenCode loads a session only in its own folder. A recorded session
   with no log row shows from the record, where long text is cut and older turns
