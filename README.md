@@ -158,9 +158,9 @@ shows as its alt text and does not load, and raw HTML does not run.
   components. One part is different: the Settings tab shows its own Save
   button, and the app does not warn about unsaved changes when you leave
   the tab. The plugin API does not give that part to plugins.
-- An agent cannot set a static WebP picture that needs a pixel change. The
-  app does that work in a web worker, and an installed plugin is one file.
-  The tool tells the agent to use a PNG or JPEG. PNG, JPEG and GIF work.
+- A static WebP picture with a color profile or a rotation uploads as a PNG
+  with the same pixels, not as a WebP. The app encodes WebP in a web worker,
+  and an installed plugin is one file. Other pictures keep their format.
 - The Activity tab reads only logged sessions, in the workspace the log names,
   because OpenCode loads a session only in its own folder. A recorded session
   with no log row shows from the record, where long text is cut and older turns
