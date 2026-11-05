@@ -21,6 +21,7 @@ import { bindReact } from "./react-host";
 import { ActivityRecorder } from "./recorder";
 import { ActivitySessions, HarnessReader, SessionLog } from "./session-read";
 import { promptsAsOpenCode } from "./sessions";
+import { mergedUsage, StoreUsage } from "./session-usage";
 import { OpenCodeSetup } from "./setup";
 import { STEER_PROCESS_ID } from "./steer";
 import { gooseRun } from "@buzz/bundled/goose/run";
@@ -137,6 +138,26 @@ const logSessions = (
         log.record(agent.key, runtime, config(agent.config).workspace);
   });
 
+/** An agent's token use: OpenCode's store, with the record for what it lacks. */
+const usageReader =
+  (history: RecordedHistory, stored: StoreUsage) =>
+  async (
+    { key }: Readonly<{ key: string }>,
+    options: Readonly<{ since: number; signal: AbortSignal }>,
+  ) => {
+    const [recorded, read] = await Promise.all([
+      history.usage(key, options),
+      stored.usage(key, options.since, options.signal),
+    ]);
+    if (read.failure)
+      console.warn("OpenCode usage was partly read", {
+        operation: "usage",
+        agent: key,
+        failure: read.failure,
+      });
+    return mergedUsage(recorded, read);
+  };
+
 export const inject = ["react", "agents", "host"];
 export const apply: PluginModule["apply"] = (ctx) => {
   const { agents, host } = ctx;
@@ -233,7 +254,7 @@ export const apply: PluginModule["apply"] = (ctx) => {
       },
     ],
     provider: createProvider(setup),
-    usage: (agent, options) => history.usage(agent.key, options),
+    usage: usageReader(history, new StoreUsage(spawner)),
     models: (agent) => setup.picks(config(agent.config)),
     ...gooseRun(runtime),
   });

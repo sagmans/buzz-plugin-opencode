@@ -34,7 +34,7 @@ const BUNDLE = join(ROOT, "dist", "plugin.js");
 const MANIFEST = join(ROOT, "dist", "manifest.json");
 /** The owner's choice for the smoke: a model of a provider the owner has
  * logged in to. OpenCode's ACP takes `provider/model/effort` as one value. */
-const SMOKE_MODEL = "zai-coding-plan/glm-5.3/max";
+const SMOKE_MODEL = "zai-coding-plan/glm-5.3-flash/max";
 /** OpenCode's own provider: its free models need no login, so nothing is
  * copied for them. */
 const FREE_PROVIDER = "opencode";
@@ -807,6 +807,81 @@ async function checkHarnessDiscovery(stub, loaded) {
   if (stub.loads.length !== asked) throw new SmokeError("a discovery replays sessions it already checked");
 }
 
+/** A first prompt that names its agent. */
+const storedOpening = (name) =>
+  `<context>\nAgent: ${name}\nChannel: other (#${OTHER_CHANNEL})\n</context>\n\nHello.`;
+/** Requests of a stored session: thinking counts as output, cost stays OpenCode's. */
+const storedRequest = (id, at) => ({
+  id,
+  type: "assistant",
+  time: { created: at, completed: at + 1 },
+  model: { id: "m", providerID: "p", variant: "max" },
+  cost: 0.5,
+  tokens: { input: 10, output: 2, reasoning: 3, cache: { read: 20, write: 4 } },
+  content: [{ type: "text", text: "dropped" }],
+});
+const storedSession = (id, agent, at, requests, parentID) => ({
+  id,
+  title: id,
+  time: { created: at, updated: at + requests },
+  ...(parentID ? { parentID } : {}),
+  messages: [
+    { id: `${id}-u`, type: "user", text: storedOpening(agent) },
+    ...Array.from({ length: requests }, (_, index) =>
+      storedRequest(`${id}-${index}`, at + index),
+    ),
+  ],
+});
+
+/** OpenCode's store gives the usage the record never saw: paged requests and child
+ * sessions at every depth, others' sessions left out. It wins over the record, a
+ * repeated read asks only for the list, and a failed read is said. */
+async function checkStoreUsage(stub, { type, agent }, recordedId) {
+  const base = 5_000_000;
+  const paged = 230;
+  stub.store = [
+    storedSession("ses_paged", agent.key, base, paged),
+    storedSession("ses_child", agent.key, base + 500, 1, "ses_paged"),
+    storedSession("ses_grand", agent.key, base + 600, 1, "ses_child"),
+    storedSession("ses_other", "other-agent", base, 1),
+    storedSession("ses_old", agent.key, 1_000, 1),
+    storedSession(recordedId, agent.key, base + 700, 1),
+  ];
+  const read = () =>
+    type.usage(agent, { since: base - 1, signal: new AbortController().signal });
+  const seen = await read();
+  const main = seen.find(({ id }) => id === "ses_paged");
+  if (main?.observations.length !== paged + 2 || main.gaps.length)
+    throw new SmokeError("a stored session's requests", { requests: main?.observations.length, gaps: main?.gaps });
+  const [first] = main.observations;
+  if (first.tokens.output !== 5 || first.tokens.cacheRead !== 20 || first.cost?.usd !== 0.5 || first.model !== "p/m/max")
+    throw new SmokeError("a stored request", { first });
+  if (seen.some(({ id }) => ["ses_child", "ses_grand", "ses_other", "ses_old"].includes(id)))
+    throw new SmokeError("usage names a child, another agent's or a too old session", { ids: seen.map(({ id }) => id) });
+  const replaced = seen.filter(({ id }) => id === recordedId);
+  if (replaced.length !== 1 || replaced[0].observations[0]?.requestId !== `${recordedId}-0`)
+    throw new SmokeError("a recorded session's store read", { replaced });
+  await checkStoreRereads(stub, read, main);
+  stub.store = [];
+  log("store-usage", { requests: main.observations.length, calls: "paged, then list only" });
+}
+
+/** The reads after the first: an unchanged session costs no request and keeps its
+ * revision, and a failed list leaves the record, marked incomplete. */
+async function checkStoreRereads(stub, read, main) {
+  stub.apiCalls.length = 0;
+  const again = await read();
+  if (stub.apiCalls.some((path) => path.includes("/message")))
+    throw new SmokeError("an unchanged session was read again", { calls: stub.apiCalls });
+  if (again.find(({ id }) => id === "ses_paged")?.revision !== main.revision)
+    throw new SmokeError("an unchanged session changed its revision");
+  stub.apiFailure = "HTTP 500 Internal Server Error";
+  const failed = await read();
+  if (!failed.length || failed.some(({ gaps }) => !gaps.length))
+    throw new SmokeError("a failed list over the record", { failed });
+  stub.apiFailure = undefined;
+}
+
 /** What the Activity tab shows of a session OpenCode reads back. The stand-in
  * replays it; no OpenCode and no model run. */
 /** A stand-in for the app's Settings row: this smoke has no DOM library, and the
@@ -873,6 +948,7 @@ async function checkStubHarnessRead(host) {
   await checkHarnessFallback(stub, loaded, row);
   await checkHarnessMerge(stub, loaded, row, prompt);
   await checkHarnessDiscovery(stub, loaded);
+  await checkStoreUsage(stub, loaded, sessionId);
   localStorage.removeItem(SESSION_LOG_KEY);
   log("stub-read", { checked: "harness words whole, record times, steer, fallback, sessions joined, discovery" });
 }
@@ -1001,7 +1077,8 @@ async function ownerMessage(type, agent, published, { id, content, tags }) {
 /** Throws unless the steer went through the steer process and the turn: the one
  * prompt on the wire does not hold the token, and the session's inbox is empty. */
 function checkSteerPath(env, token, promptsBefore) {
-  const steers = started.filter((entry) => entry.id === STEER_PROCESS);
+  // The usage read shares this process id, and only a steer posts.
+  const steers = started.filter((entry) => entry.id === STEER_PROCESS && entry.args[0] === "POST");
   if (!steers.length) throw new SmokeError("no steer process ran");
   if (steers.some((entry) => entry.code !== 0))
     throw new SmokeError("a steer process failed", { codes: steers.map((entry) => entry.code) });

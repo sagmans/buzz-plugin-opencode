@@ -118,7 +118,15 @@ and OpenCode, as the app's own agents' transcripts show them. The tab shows the
 record for the session that runs now, which updates live, and for a session
 whose read fails or that OpenCode no longer has. A failed read shows an alert
 above the record. A turn read from OpenCode takes its times, its end and its
-steers from the record. The app's token and cost view reads only the record.
+steers from the record.
+
+The app's token and cost view reads each request's counts and cost from
+OpenCode's store, child sessions included, also for sessions from before this
+plugin. The record fills in only a session the store cannot read. The store has
+no read over ACP that does not replay a session, so each request is one short
+`opencode --standalone api` GET process, the same grant that steering uses. At
+most 4 run at once, and a session is read again only after OpenCode updated it.
+
 Replies show with Markdown layout, as in the app's own Activity. A remote image
 shows as its alt text and does not load, and raw HTML does not run.
 
@@ -161,8 +169,8 @@ shows as its alt text and does not load, and raw HTML does not run.
   prompt names the agent, as Goose does. It checks only the agent's current
   workspace, and at most 15 sessions each time it opens. Others do not show
   until a later check reaches them.
-- A turn from OpenCode that is not on the record has no times, no end state and
-  no usage. A recorded steer that a replay does not hold shows with its record
+- A turn from OpenCode that is not on the record has no times and no end state.
+  A recorded steer that a replay does not hold shows with its record
   text, which starts with "Note:".
 - A session with no title shows as a short id, because the plugin API does not
   give channel names to this tab.
