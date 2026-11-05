@@ -3,3 +3,6 @@
 [tools]
 node = "24.22.1"
 pnpm = "12.4.2"
+# 1.24.3 misparses TypeScript method bodies and reports whole class sections
+# as one over-complex function, so the complexity gate judges the wrong code.
+"pipx:lizard" = "1.24.1"
