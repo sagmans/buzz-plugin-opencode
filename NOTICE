@@ -6,18 +6,28 @@ Copyright 2026 Block, Inc., licensed under the Apache License, Version 2.0:
 https://github.com/block/buzz-app
 
 The plugin bundles buzz-app modules unchanged at the revision in
-src/constants.ts (BUZZ_APP_REV). These files adapt buzz-app code from its
+src/constants.ts (BUZZ_APP_REV), among them the Goose agent type's runtime,
+run wiring and synced settings (src/bundled/goose/runtime.ts, run.ts and
+settings.ts). The build puts two files of this plugin in place of two Goose
+modules (vite.config.ts, SWAPS). These files adapt buzz-app code from its
 bundled Goose agent type; each names its source in a header comment:
 
-- src/runtime.ts: from src/bundled/goose/runtime.ts.
-- src/sessions.ts: from src/bundled/goose/sessions.ts.
-- src/run.ts: from src/bundled/goose/run.ts.
-- src/settings.ts: from src/bundled/goose/settings.ts.
+- src/opencode.ts: replaces src/bundled/goose/goose.ts and keeps its export
+  names; its hooks follow that file.
+- src/sessions.ts: replaces src/bundled/goose/sessions.ts; from that file.
+- src/setup.ts: reading thinking levels follows src/bundled/goose/setup.ts.
+- src/provider.tsx: the provider dialog and default control follow
+  src/bundled/goose/tabs.tsx, built from the same buzz-app components.
+- src/activity.tsx: the Activity tab follows src/bundled/goose/tabs.tsx, built
+  from the same buzz-app components.
+- src/session-read.ts: reading sessions from the harness, their limits and the
+  first-prompt check follow src/bundled/goose/transcript.ts; shared with this
+  project's other ACP plugin.
+- src/transcript.ts: turns from a replay follow src/bundled/goose/transcript.ts;
+  shared with this project's other ACP plugin.
 - src/index.ts: the agent type wiring follows src/bundled/goose/index.ts.
 - src/views.tsx: the New agent and Settings views follow
   src/bundled/goose/tabs.tsx, built from the same buzz-app components.
-- src/activity.tsx, src/history.ts and src/transcript.ts: the Activity tab follows
-  src/bundled/goose/tabs.tsx and src/bundled/goose/transcript.ts.
 
 The build also bundles react-markdown and remark-gfm, with the unified, micromark
 and mdast libraries they use, for the transcripts. Each is licensed under the

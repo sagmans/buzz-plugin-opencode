@@ -9,8 +9,8 @@
 #
 # Usage: scripts/link-toolchain <buzz-app clone>   (or set BUZZ_APP_DIR)
 # Prepare the clone first: check out the revision in src/constants.ts
-# (BUZZ_APP_REV), then `pnpm install --frozen-lockfile --ignore-scripts`
-# there too: the type check reads the types of buzz-app's own packages.
+# (BUZZ_APP_REV). It gives source only, and needs no package install: the type
+# check and the bundle read this repository's own packages.
 # (Adapted from buzz-plugin-tailscale-host.)
 set -euo pipefail
 
@@ -36,8 +36,6 @@ if ! { [ -f "$clone/package.json" ] && grep -qF "$EXPECTED_PACKAGE" "$clone/pack
 	die "$EX_CONFIG" "$clone is not a buzz-app clone (package.json name is not buzz-foundation)"
 fi
 [ -d "$clone/src" ] || die "$EX_CONFIG" "$clone has no src/ folder"
-[ -d "$clone/node_modules" ] ||
-	die "$EX_CONFIG" "$clone has no node_modules: run 'pnpm install --frozen-lockfile' there first"
 
 # A real folder at a link path is someone's work, never replaced.
 link() {

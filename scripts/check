@@ -17,8 +17,8 @@
 #   A git worktree is judged by its tracked files only; any other directory
 #   (the exported index at pre-commit) by every regular file in it.
 #
-# The full run needs a buzz-app clone at the pinned revision with its
-# dependencies installed (README.md, Build): BUZZ_APP_DIR, else the clone this
+# The full run needs a buzz-app clone at the pinned revision, source only, with
+# no package install (README.md, Build): BUZZ_APP_DIR, else the clone this
 # checkout's buzz-app link points to. Its smoke run needs `opencode` on PATH
 # and network access to the smoke model's provider (smoke/run.mjs).
 #
@@ -47,9 +47,10 @@ MANIFEST_ID_RE='^[a-z][a-z0-9.-]{0,79}$'
 MANIFEST_DESCRIPTION_MAX_BYTES=280
 MANIFEST_API_VERSION=1
 # The only host grant the plugin may hold, in canonical JSON: OpenCode's ACP
-# server, its model list, loopback MCP for the Buzz tools, and files for the
+# server, one-shot API calls on a private server for steering, its model list
+# from a private server, loopback MCP for the Buzz tools, and files for the
 # workspace folder. Any wider grant (network origins, other programs) fails.
-MANIFEST_HOST_GRANT='{"commands":[{"args":["models"],"id":"models","maxOutputBytes":262144,"program":"opencode"}],"files":true,"mcp":true,"processes":[{"args":["acp"],"id":"opencode","program":"opencode"}]}'
+MANIFEST_HOST_GRANT='{"commands":[{"args":["--standalone","models"],"id":"models","maxOutputBytes":262144,"program":"opencode"}],"files":true,"mcp":true,"processes":[{"args":["acp"],"id":"opencode","program":"opencode"},{"args":["--standalone","api"],"id":"opencode-api","program":"opencode"}]}'
 # Complexity limits match the generic changed-function check, applied here
 # to every function so old code cannot drift past them unnoticed.
 LIZARD_MAX_CCN=15

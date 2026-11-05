@@ -13,10 +13,18 @@ install and the security model. Keep it true when you change behavior.
 | --- | --- |
 | `manifest.json` | Plugin manifest. The `host` block is the whole native grant. |
 | `src/` | Plugin source (TypeScript). Imports buzz-app modules unchanged through `@buzz/*`. |
-| `src/runtime.ts`, `src/sessions.ts`, `src/run.ts`, `src/settings.ts` | Adapted from buzz-app's Goose agent type; see NOTICE. |
+| `src/opencode.ts`, `src/sessions.ts` | Put in place of Goose's `goose.ts` and `sessions.ts` at build time (`vite.config.ts`, `SWAPS`); see NOTICE. |
+| `src/steer.ts` | Steers a running turn with one short `opencode --standalone api` process. Throws when it fails, so that the client queues. |
+| `src/setup.ts` | What OpenCode offers beyond its model list, read with a short-lived `opencode acp`: thinking levels. A good result stands for `MODELS_TTL_MS`. |
+| `src/models.ts` | The model list from the manifest command, cached for `MODELS_TTL_MS`. |
+| `src/recorder.ts`, `src/history.ts` | Harness-neutral tap on an ACP process's JSON-RPC, the local activity record built on it, and the sessions and usage read from that record. Name no harness in them: other ACP plugins copy them. |
+| `src/provider.tsx` | The app's provider row and dialog: what a setup check of `src/setup.ts` found. It shows; it never writes OpenCode's setup and holds no credentials. |
+| `src/session-read.ts`, `src/transcript.ts` | Shared copies: the session log, the short-lived `session/load` read with its limits, and a replay's turns with the record's times and steers. Keep their code the same as the other ACP plugin's, except import paths and formatting. |
+| `src/activity.tsx` | The Activity tab, from the app's own components: the read first, the record for the running session and as the fallback. |
 | `src/constants.ts` | `BUZZ_APP_REV`, the buzz-app revision the bundle is built from. |
 | `scripts/build-plugin.mjs`, `scripts/link-toolchain`, `vite.config.ts` | Build: checks the clone, type-checks, bundles one `dist/plugin.js`. |
 | `smoke/run.mjs` | End-to-end smoke: the built plugin, a Node host stand-in, real `opencode acp`. |
+| `smoke/stub.mjs` | The stand-in `opencode acp`: session reads that real OpenCode cannot show on demand. No model runs. |
 | `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `mise.toml` | Pinned packages and tools; 14-day minimum release age. |
 | `scripts/check` | All repository checks. The Git hooks call it. |
 | `scripts/setup-hooks`, `.githooks/` | Generic hooks and helpers, copied from a template. |
@@ -51,11 +59,29 @@ settings. Do not edit the files that come from the hook template:
 - The manifest grant is security-relevant. `scripts/check` accepts only
   the exact grant in `MANIFEST_HOST_GRANT`. Change both together, on
   purpose, and never add network origins.
+- Every OpenCode command that the plugin runs takes `--standalone`. Without
+  it, the command attaches to the owner's background service, or starts one.
+  `opencode acp` has its own private server and takes no such flag.
+- Check steering again on each OpenCode update: the second server on one
+  database is not a promise of OpenCode. Send a steer only with `resume: false`,
+  or the short-lived server runs the model itself. Never record the steer
+  process, and never log a steer's text.
+- Saved session prompts stay under the `opencode` key. The Goose runtime asks
+  for the `goose` key, and `promptsAsOpenCode` in `src/sessions.ts` maps it.
+- No text that an owner sees may say "goose". The guard in `src/index.ts` keeps
+  the runtime's desktop-only error from appearing. The runtime's console logs
+  still say "goose"; `src/bundled/goose/runtime.ts` is bundled unchanged.
 - Do not change the manifest `id` (`sagmans.opencode`), the type id
   (`opencode`) or the storage keys. Saved agents match on them.
-- Import buzz-app modules unchanged. Never edit the buzz-app clone. A new
-  app release goes through `BUZZ_APP_REV`, a new build, the smoke run and
-  a live check in that app version.
+- The turn logic is buzz-app's Goose runtime (`bundled/goose/runtime.ts`,
+  `run.ts`, `settings.ts`), bundled unchanged. Never copy it into `src/`.
+  Change OpenCode behavior in the two swapped modules only, and keep every
+  export name that the Goose modules import from the files they replace.
+  The build fails when a swapped original is still in the bundle.
+- Import buzz-app modules unchanged. Never edit the buzz-app clone, and never
+  install packages in it: every package the build uses comes from this repo's
+  lockfile. A new app release goes through `BUZZ_APP_REV`, a new build, the
+  smoke run and a live check in that app version.
 - A package that a buzz-app module needs goes into `package.json` with an
   exact version that is at least 14 days old. Never lower the minimum
   release age.

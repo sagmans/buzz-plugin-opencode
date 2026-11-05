@@ -1,14 +1,17 @@
 // The models OpenCode offers on this computer, for the New agent dialog, the
 // Settings tab and the model pick on a mention. OpenCode lists them itself
-// (`opencode models`, one `provider/model` per line), so the list always
+// (`opencode --standalone models`, one `provider/model` per line), so the list always
 // matches the providers the owner set up in OpenCode, with no model catalog
 // in this plugin.
-import type { Model, Models } from "@buzz/features/agents/service";
 
-/** The manifest command that runs `opencode models`. */
+/** The manifest command that runs `opencode --standalone models`: the flag
+ * keeps the read on a private server, so it never starts or uses the owner's
+ * background service. */
 export const MODELS_COMMAND = "models";
-/** A list is kept this long, so opening several dialogs runs OpenCode once. */
-const CACHE_MS = 60_000;
+/** A list is kept this long, so opening several dialogs and settings runs
+ * OpenCode once. A model added since shows after this, or at once with the
+ * dialog's "Check again". */
+export const MODELS_TTL_MS = 5 * 60_000;
 /** OpenCode's model ids are `provider/model`; anything else in its output
  * (a warning, a banner) is not a model. */
 const MODEL_LINE = /^[A-Za-z0-9._@:-]+\/[A-Za-z0-9._@:/+-]+$/;
@@ -37,21 +40,41 @@ export function parseModels(output: string): string[] {
   return [...seen];
 }
 
+/** A saved `provider/model/variant` as OpenCode's model and level. OpenCode
+ * reads that form itself, so such a config keeps running as saved; pickers
+ * show it as the two choices it is. An id OpenCode lists whole, or whose
+ * shorter form it does not list, is a model id with slashes. */
+export function splitVariant(
+  model: string,
+  ids: readonly string[],
+): Readonly<{ model: string; effort: string }> {
+  const cut = model.lastIndexOf("/");
+  const base = model.slice(0, Math.max(cut, 0));
+  return !ids.includes(model) && ids.includes(base)
+    ? { model: base, effort: model.slice(cut + 1) }
+    : { model, effort: "" };
+}
+
 /** Reads and caches OpenCode's model list. */
 export class ModelList {
   private cached: { at: number; ids: Promise<string[]> } | undefined;
   constructor(private readonly runCommand: RunCommand) {}
 
-  /** The model ids, read again after `CACHE_MS` or a failure. */
+  /** Drops the kept list: a setup check must see a provider set up just now. */
+  forget() {
+    this.cached = undefined;
+  }
+
+  /** The model ids, read again after `MODELS_TTL_MS` or a failure. */
   ids(): Promise<string[]> {
     const now = Date.now();
-    if (this.cached && now - this.cached.at < CACHE_MS) return this.cached.ids;
+    if (this.cached && now - this.cached.at < MODELS_TTL_MS) return this.cached.ids;
     const ids = (async () => {
       const output = await this.runCommand(MODELS_COMMAND);
       // The host gives null for a failed, timed-out or oversized run.
       if (output === null)
         throw new ModelListError(
-          "OpenCode did not list its models. Check that `opencode models` works in a terminal.",
+          "OpenCode did not list its models. Check that `opencode --standalone models` works in a terminal.",
         );
       const list = parseModels(output);
       if (!list.length)
@@ -67,15 +90,5 @@ export class ModelList {
       if (this.cached === entry) this.cached = undefined;
     });
     return ids;
-  }
-
-  /** The picks for a mention: OpenCode's models, with the agent's own model
-   * first even when OpenCode no longer lists it, as it is the one it runs on.
-   * OpenCode has no thinking levels in ACP, so no model offers efforts. */
-  async picks(current: string): Promise<Models> {
-    const ids = await this.ids().catch(() => [] as string[]);
-    const named = current && !ids.includes(current) ? [current, ...ids] : ids;
-    const models: Model[] = named.map((id) => ({ id, label: id, efforts: [] }));
-    return { current, models };
   }
 }

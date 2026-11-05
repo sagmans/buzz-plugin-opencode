@@ -5,8 +5,9 @@
 // (scripts/link-toolchain), so it is only built from the exact buzz-app
 // revision the plugin names (BUZZ_APP_REV in src/constants.ts) with no local
 // edits: the harness code in dist/plugin.js is then the code of that app
-// release. The type check also reads the types of buzz-app's own packages,
-// so the clone needs its dependencies installed too.
+// release. The clone gives source only: the type check and the bundle read
+// packages from this repository's lockfile, so the clone has no install of
+// its own, and no package outside that lockfile runs or is read.
 // (Adapted from buzz-plugin-tailscale-host's scripts/build-runner.mjs.)
 //
 // Usage: node scripts/build-plugin.mjs [--check-only]
@@ -19,8 +20,6 @@ import { fileURLToPath } from "node:url";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const CLONE_LINK = join(ROOT, "buzz-app");
 const OWN_MODULES = join(ROOT, "node_modules");
-/** The clone's installed packages: the type check of buzz-app modules reads them. */
-const CLONE_MODULES = join(CLONE_LINK, "node_modules");
 /** This repository's own tools; any other copy is outside its lockfile. */
 const TOOLS = ["tsc", "vite"];
 const CONSTANTS = join(ROOT, "src", "constants.ts");
@@ -76,10 +75,6 @@ function checkLink() {
   }
   if (!isLink || !existsSync(CLONE_LINK))
     throw new BuildError(`${CLONE_LINK} is missing: run scripts/link-toolchain <buzz-app clone> first`, { exit: EXIT_CONFIG });
-  if (!existsSync(CLONE_MODULES))
-    throw new BuildError(`the buzz-app clone has no node_modules: run 'pnpm install --frozen-lockfile --ignore-scripts' in the clone`, {
-      exit: EXIT_CONFIG,
-    });
 }
 
 /** This repository's packages must be a real install from its own lockfile,

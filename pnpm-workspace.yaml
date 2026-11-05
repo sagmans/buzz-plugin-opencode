@@ -14,3 +14,8 @@ nodeLinker: hoisted
 # Install scripts stay off, and a package that asks for one stops the install:
 # none of these packages needs one to build.
 strictDepBuilds: true
+# buzz-app's composer code is written against these exact versions, which its
+# own lockfile pins. A newer one in a nested dependency breaks its types.
+overrides:
+  mdast-util-from-markdown: 2.0.3
+  mdast-util-to-markdown: 2.1.2

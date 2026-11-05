@@ -8,12 +8,19 @@
     "tags": ["code", "coding-agents"]
   },
   "host": {
-    "processes": [{ "id": "opencode", "program": "opencode", "args": ["acp"] }],
+    "processes": [
+      { "id": "opencode", "program": "opencode", "args": ["acp"] },
+      {
+        "id": "opencode-api",
+        "program": "opencode",
+        "args": ["--standalone", "api"]
+      }
+    ],
     "commands": [
       {
         "id": "models",
         "program": "opencode",
-        "args": ["models"],
+        "args": ["--standalone", "models"],
         "maxOutputBytes": 262144
       }
     ],
