@@ -1,5 +1,5 @@
-// OpenCode on buzz-app's shared ACP client: one `opencode acp` process for
-// every OpenCode agent. Plain ACP covers almost all of it; these hooks add
+// OpenCode on buzz-app's shared ACP client: each conversation needs its own
+// `opencode acp` process to keep tool calls in its thread. These hooks add
 // only the model and thinking-level picks, which OpenCode takes as session
 // config options, and `OpenCodeWire` turns OpenCode's way of reporting a
 // compaction into the one the shared client reads and knows which turns run,

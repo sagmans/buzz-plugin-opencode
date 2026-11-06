@@ -93,9 +93,12 @@ export class SharedProcess {
           return typeof value === "function" ? value.bind(target) : value;
         }
         return async (launch: Parameters<AcpProcess["open"]>[0]) => {
+          const session = await target.open(launch);
+          // Failed opens still need orphan retirement. Successful adoption
+          // alone transfers cleanup to the session, so capacity retry can
+          // reuse the process before the orphan deadline.
           adopted = true;
           clearTimeout(orphan);
-          const session = await target.open(launch);
           // The tool server closes when the client retires the session — idle
           // eviction, conversation removal, shutdown — or when the process
           // exits; either way the process has nothing left to serve.
