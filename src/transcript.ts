@@ -99,6 +99,13 @@ function promptItem(id: string, raw: string) {
   };
 }
 
+/** A turn's thread root: only a turn in a channel has one, and a channel's own
+ * turns have none. Kept apart so the turn builder stays a plain literal. */
+function threadRootOf(place: Place) {
+  if (!place.channelId) return undefined;
+  return place.root ?? null;
+}
+
 /** Folds a replay's updates into turns, in order. */
 class Turns {
   readonly turns: TranscriptTurn[] = [];
@@ -122,9 +129,7 @@ class Turns {
     const next: TranscriptTurn = {
       turnId: this.id(),
       channelId: this.place.channelId || null,
-      threadRootId: this.place.channelId
-        ? (this.place.root ?? null)
-        : undefined,
+      threadRootId: threadRootOf(this.place),
       triggeringEventIds: [],
       sessionId: this.sessionId,
       newSession: false,
