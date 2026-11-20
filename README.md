@@ -42,7 +42,7 @@ flowchart TB
 
 - The Buzz desktop app, release `v0.7.0-preview.243.1` (plugin API
   version 1). The plugin bundles code from that release; see "Build".
-- OpenCode 2.2.4 on your login shell's `PATH` (the version the smoke scenario
+- OpenCode 2.3.0 on your login shell's `PATH` (the version the smoke scenario
   ran on), signed in to at least one provider. OpenCode's free models need no
   key. The plugin needs its `--standalone` flag for the model list.
 - To build: Node.js 24 or newer, pnpm 12, and a buzz-app source clone. The
@@ -189,7 +189,7 @@ shows as its alt text and does not load, and raw HTML does not run.
   the session's next message.
 - Steering uses a second private OpenCode server on the same database (see
   "Security"). OpenCode does not promise that this works. The smoke scenario
-  proves it on OpenCode 2.2.4 only. Check it again on each OpenCode update.
+  proves it on OpenCode 2.3.0 only. Check it again on each OpenCode update.
 - The record holds no steered message, so a transcript from the record does
   not show it. The reply to it shows. A transcript read from OpenCode shows it
   as OpenCode kept it. The smoke run logs how many steers show in that read.

@@ -38,8 +38,9 @@ const SMOKE_MODEL = "zai-coding-plan/glm-5.3-flash/max";
 /** OpenCode's own provider: its free models need no login, so nothing is
  * copied for them. */
 const FREE_PROVIDER = "opencode";
-/** The login that `opencode auth login` stores for a provider. */
-const CREDENTIAL_LABEL = "default";
+/** OpenCode keeps several logins per provider and marks the one it uses as
+ * active; a fixed label can name a login it no longer uses. */
+const ACTIVE_CREDENTIAL = 1;
 /** Provider ids go into SQL text, so only this shape is accepted. */
 const PROVIDER_ID = /^[a-z0-9][a-z0-9-]*$/;
 /** Characters that would end or change the read-only SQLite URI. */
@@ -72,6 +73,14 @@ const MARKER = `smoke-${randomBytes(4).toString("hex")}`;
  * a bounded number of times; a plugin fault (OpenCode never listed the Buzz
  * tools, or a reply outside the channel) fails at once. */
 const TURN_ATTEMPTS = 3;
+/** Since OpenCode 2.3.0 a subagent always runs in the background: the
+ * parent's turn ends once the child starts, and the child posts later. The
+ * subagent check waits this long for that post before it judges the turn. */
+const CHILD_POST_MS = 90_000;
+const CHILD_POLL_MS = 500;
+/** Turns mentioned so far: each gets its own marker, because a model asked
+ * again in a thread that already holds the marker declines to repeat it. */
+let turns = 0;
 /** Every MCP method OpenCode called, in order, for the checks above. */
 const mcpCalls = [];
 /** Every JSON-RPC message the plugin wrote to OpenCode, in order: what a
@@ -425,6 +434,17 @@ function recordingHandle(agent, published) {
   };
 }
 
+/** Waits, bounded, for a background subagent's post of `marker`; the checks
+ * that follow fail with their own message when it never comes. */
+async function childPost(published, marker) {
+  const started = Date.now();
+  while (Date.now() - started < CHILD_POST_MS) {
+    if (published.some((item) => item.content.includes(marker))) return;
+    await new Promise((resolve) => setTimeout(resolve, CHILD_POLL_MS));
+  }
+  log("child-post-timeout", { marker, waitedMs: Date.now() - started });
+}
+
 /** Passes when the turn used its session's own Buzz tools by `method`'s count:
  * a new session lists the tools, and a turn in a known one calls them. Without
  * either, OpenCode never had this session's own. */
@@ -486,6 +506,7 @@ async function mentionOnce(type, agent, marker, effort, reuse, ask = markerAsk) 
   log("handed-over");
   const result = await done;
   log("settled", { result });
+  if (ask === subagentAsk) await childPost(published, marker);
   checkToolsUsed(callsBefore, reuse || ask !== markerAsk ? "tools/call" : "tools/list");
   checkAnswer(published, marker, root, result);
   const sessions = type.sessions.list(AGENT_KEY);
@@ -1336,7 +1357,7 @@ function pickedLevel(picks, saved) {
 async function mentionAndCheck(type, agent, effort, reuse, ask) {
   for (let attempt = 1; ; attempt++) {
     try {
-      return await mentionOnce(type, agent, `${MARKER}-${attempt}`, effort, reuse, ask);
+      return await mentionOnce(type, agent, `${MARKER}-${++turns}`, effort, reuse, ask);
     } catch (error) {
       if (!(error instanceof SmokeError) || !error.context?.retry || attempt >= TURN_ATTEMPTS) throw error;
       log("model-miss", { attempt, of: TURN_ATTEMPTS, error: error.message });
@@ -1407,7 +1428,7 @@ function seedCredential(env, model) {
         target,
         `ATTACH 'file:${source}?mode=ro' AS owner;` +
           ` INSERT INTO main.credential SELECT * FROM owner.credential` +
-          ` WHERE integration_id = '${provider}' AND label = '${CREDENTIAL_LABEL}';` +
+          ` WHERE integration_id = '${provider}' AND active = ${ACTIVE_CREDENTIAL};` +
           ` SELECT changes(); DETACH owner;`,
       ],
       { timeout: SEED_TIMEOUT_MS },
