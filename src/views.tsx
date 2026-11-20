@@ -57,6 +57,15 @@ const message = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
 const levelLabel = (level: string) =>
   level.charAt(0).toUpperCase() + level.slice(1);
+/** A model's thinking levels as the picker's effort menu lists them: OpenCode's
+ * default first, and no menu at all for a model that offers no levels. */
+const levelChoices = (levels: readonly string[]) =>
+  levels.length
+    ? [
+        { id: "", label: DEFAULT_LEVEL_LABEL },
+        ...levels.map((level) => ({ id: level, label: levelLabel(level) })),
+      ]
+    : [];
 
 type Read<T> =
   | { status: "loading"; value?: T }
@@ -144,18 +153,7 @@ export function createViews(models: ModelList, setup: OpenCodeSetup) {
       id,
       label: id,
       effortScope: PROCESS_ID,
-      loadEfforts: async () => {
-        const { levels } = await setup.efforts(id);
-        return levels.length
-          ? [
-              { id: "", label: DEFAULT_LEVEL_LABEL },
-              ...levels.map((level) => ({
-                id: level,
-                label: levelLabel(level),
-              })),
-            ]
-          : [];
-      },
+      loadEfforts: async () => levelChoices((await setup.efforts(id)).levels),
     }));
     return { list, retry, choices };
   }
