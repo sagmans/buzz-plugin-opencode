@@ -26,8 +26,13 @@ function plainBuildAtLoad(): Plugin {
     enforce: "pre",
     async resolveId(source, importer, options) {
       if (source !== DOM_AT_LOAD) return null;
-      const found = await this.resolve(source, importer, { ...options, skipSelf: true });
-      return found && { ...found, id: found.id.replace(DOM_BUILD, PLAIN_BUILD) };
+      const found = await this.resolve(source, importer, {
+        ...options,
+        skipSelf: true,
+      });
+      return (
+        found && { ...found, id: found.id.replace(DOM_BUILD, PLAIN_BUILD) }
+      );
     },
   };
 }
@@ -99,10 +104,12 @@ function reactFromHost(): Plugin {
     resolveId(source, importer, options) {
       if (source === "react") return REACT_HOST;
       if (source === REACT_BUNDLED) {
-        if (importer !== REACT_HOST) this.error(`${REACT_BUNDLED} is for src/react-host.ts only`);
+        if (importer !== REACT_HOST)
+          this.error(`${REACT_BUNDLED} is for src/react-host.ts only`);
         return this.resolve("react", ENTRY, { ...options, skipSelf: true });
       }
-      if (REACT_BUNDLE.test(source)) return this.resolve(source, ENTRY, { ...options, skipSelf: true });
+      if (REACT_BUNDLE.test(source))
+        return this.resolve(source, ENTRY, { ...options, skipSelf: true });
       if (REACT_OTHER.test(source)) return { id: source, external: true };
       return null;
     },
@@ -133,11 +140,19 @@ function ownDependencies(): Plugin {
       // this plugin never runs, which tree-shaking then drops. One that is
       // still used stays an import, and pluginContract fails the build.
       if (HOST_SUPPLIED.test(source)) return { id: source, external: true };
-      if (!importer || NOT_A_PACKAGE.test(source) || isAbsolute(source)) return null;
+      if (!importer || NOT_A_PACKAGE.test(source) || isAbsolute(source))
+        return null;
       const from = importer.split("?")[0] ?? importer;
-      const base = inside(buzzLink, from) ? buzzLink : inside(clone, from) ? clone : undefined;
+      const base = inside(buzzLink, from)
+        ? buzzLink
+        : inside(clone, from)
+          ? clone
+          : undefined;
       if (!base) return null;
-      const found = await this.resolve(source, ENTRY, { ...options, skipSelf: true });
+      const found = await this.resolve(source, ENTRY, {
+        ...options,
+        skipSelf: true,
+      });
       return found ?? { id: source, external: true };
     },
   };
@@ -156,13 +171,19 @@ function swapModules(): Plugin {
       swaps.clear();
       const real = resolve(realpathSync(buzzLink), "src");
       for (const [from, to] of Object.entries(SWAPS))
-        for (const base of [buzzSrc, real]) swaps.set(resolve(base, from), resolve(here, to));
+        for (const base of [buzzSrc, real])
+          swaps.set(resolve(base, from), resolve(here, to));
     },
     async resolveId(source, importer, options) {
       if (!importer) return null;
-      const found = await this.resolve(source, importer, { ...options, skipSelf: true });
+      const found = await this.resolve(source, importer, {
+        ...options,
+        skipSelf: true,
+      });
       if (!found || found.external) return null;
-      const target = swaps.get(found.id.split("?")[0]?.replace(SOURCE_SUFFIX, "") ?? "");
+      const target = swaps.get(
+        found.id.split("?")[0]?.replace(SOURCE_SUFFIX, "") ?? "",
+      );
       return target && target !== importer ? target : null;
     },
   };
@@ -175,33 +196,60 @@ function pluginContract(): Plugin {
     name: "opencode-plugin-contract",
     // After Vite's CSS plugin, which adds the CSS modules of bundled buzz-app
     // components as an asset.
-    generateBundle: { order: "post", handler(_options, bundle) {
-      // Buzz loads no plugin CSS. Those class names are content hashes, the
-      // same in Buzz's own build of the same buzz-app revision, so Buzz's
-      // stylesheet already styles them. AGENTS.md says to check this live
-      // on each new BUZZ_APP_REV.
-      for (const [name, output] of Object.entries(bundle))
-        if (output.type === "asset" && name.endsWith(CSS_SUFFIX)) delete bundle[name];
-      const outputs = Object.values(bundle);
-      const chunk = outputs[0];
-      if (outputs.length !== 1 || chunk?.type !== "chunk")
-        this.error(`Plugin API v1 needs one self-contained JS module, without assets; found ${Object.keys(bundle).join(", ")}`);
-      // Fail closed: a swapped module that still made it into the bundle
-      // would run Goose's own process code for OpenCode agents.
-      const unswapped = Object.keys(chunk.modules).filter((id) =>
-        Object.keys(SWAPS).some((from) => id.replace(SOURCE_SUFFIX, "").endsWith(`/src/${from}`)),
-      );
-      if (unswapped.length) this.error(`The bundle still holds swapped modules: ${unswapped.join(", ")}`);
-      // The emitted code, not `chunk.imports`: that lists every left-out
-      // package a bundled module named, also those tree-shaking then dropped.
-      const left = [...chunk.code.matchAll(STATIC_IMPORT)].map((match) => match[1]).concat(chunk.dynamicImports);
-      if (left.length)
-        this.error(`The plugin still imports ${left.join(", ")}: add each to package.json with a pinned version, or stop using it (React and Cordis come from Buzz)`);
-      if (WORKER.test(chunk.code)) this.error("The bundle holds a web worker, which Plugin API v1 cannot load");
-      if (!chunk.exports.includes("apply")) this.error("The entry must export apply(ctx)");
-      this.emitFile({ type: "asset", fileName: MANIFEST, source: readFileSync(resolve(here, MANIFEST), "utf8") });
-      this.emitFile({ type: "asset", fileName: ICON, source: readFileSync(resolve(here, ICON)) });
-    } },
+    generateBundle: {
+      order: "post",
+      handler(_options, bundle) {
+        // Buzz loads no plugin CSS. Those class names are content hashes, the
+        // same in Buzz's own build of the same buzz-app revision, so Buzz's
+        // stylesheet already styles them. AGENTS.md says to check this live
+        // on each new BUZZ_APP_REV.
+        for (const [name, output] of Object.entries(bundle))
+          if (output.type === "asset" && name.endsWith(CSS_SUFFIX))
+            delete bundle[name];
+        const outputs = Object.values(bundle);
+        const chunk = outputs[0];
+        if (outputs.length !== 1 || chunk?.type !== "chunk")
+          this.error(
+            `Plugin API v1 needs one self-contained JS module, without assets; found ${Object.keys(bundle).join(", ")}`,
+          );
+        // Fail closed: a swapped module that still made it into the bundle
+        // would run Goose's own process code for OpenCode agents.
+        const unswapped = Object.keys(chunk.modules).filter((id) =>
+          Object.keys(SWAPS).some((from) =>
+            id.replace(SOURCE_SUFFIX, "").endsWith(`/src/${from}`),
+          ),
+        );
+        if (unswapped.length)
+          this.error(
+            `The bundle still holds swapped modules: ${unswapped.join(", ")}`,
+          );
+        // The emitted code, not `chunk.imports`: that lists every left-out
+        // package a bundled module named, also those tree-shaking then dropped.
+        const left = [...chunk.code.matchAll(STATIC_IMPORT)]
+          .map((match) => match[1])
+          .concat(chunk.dynamicImports);
+        if (left.length)
+          this.error(
+            `The plugin still imports ${left.join(", ")}: add each to package.json with a pinned version, or stop using it (React and Cordis come from Buzz)`,
+          );
+        if (WORKER.test(chunk.code))
+          this.error(
+            "The bundle holds a web worker, which Plugin API v1 cannot load",
+          );
+        if (!chunk.exports.includes("apply"))
+          this.error("The entry must export apply(ctx)");
+        this.emitFile({
+          type: "asset",
+          fileName: MANIFEST,
+          source: readFileSync(resolve(here, MANIFEST), "utf8"),
+        });
+        this.emitFile({
+          type: "asset",
+          fileName: ICON,
+          source: readFileSync(resolve(here, ICON)),
+        });
+      },
+    },
   };
 }
 
@@ -210,7 +258,13 @@ export default defineConfig({
   publicDir: false,
   // The bundled React packages (react, react-dom) pick their build by it.
   define: { "process.env.NODE_ENV": JSON.stringify("production") },
-  plugins: [plainBuildAtLoad(), reactFromHost(), swapModules(), ownDependencies(), pluginContract()],
+  plugins: [
+    plainBuildAtLoad(),
+    reactFromHost(),
+    swapModules(),
+    ownDependencies(),
+    pluginContract(),
+  ],
   // Symlinks kept: buzz-app modules keep their buzz-app/... ids, so the
   // bundle names them relative to the repository and holds no local path.
   resolve: { alias: { "@buzz": buzzSrc }, preserveSymlinks: true },

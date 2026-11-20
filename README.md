@@ -59,7 +59,7 @@ unchanged, from the exact app revision in `src/constants.ts`
 
 ```sh
 mise install
-pnpm install --frozen-lockfile
+pnpm install --frozen-lockfile --ignore-scripts
 git clone https://github.com/block/buzz-app.git ../buzz-app
 git -C ../buzz-app checkout <BUZZ_APP_REV>
 scripts/link-toolchain ../buzz-app
@@ -236,9 +236,9 @@ public issue for it.
 
 1. After you clone, run `scripts/setup-hooks` once. It turns on the Git
    hooks of this repository.
-2. Install the tools that the hooks use: `gitleaks`, `node`, `pnpm`,
-   `opencode`, `shellcheck`, `shfmt`, `markdownlint-cli2`, `lizard`,
-   `semgrep`, `trivy`, `osv-scanner` and `sqlite3`.
+2. Run `mise install` for the pinned tools in `mise.toml` (`node`, `pnpm`,
+   `shfmt`, `markdownlint-cli2`, `lizard`), and keep `gitleaks`, `opencode`,
+   `shellcheck`, `semgrep`, `trivy`, `osv-scanner` and `sqlite3` on `PATH`.
 3. Set up the build (see "Build").
 4. Run `scripts/check` before you push. It checks the manifest grant and
    private data, runs the linters and the scanners, builds the plugin and

@@ -44,18 +44,27 @@ export class StubOpenCode {
       return 1;
     }
     const all = match
-      ? session.messages.filter(({ type }) => type === url.searchParams.get("type"))
+      ? session.messages.filter(
+          ({ type }) => type === url.searchParams.get("type"),
+        )
       : this.store.map(({ messages, ...row }) => row);
     const page = all.slice(from, from + limit);
     const next = from + limit < all.length ? String(from + limit) : null;
-    options.onStdout?.(JSON.stringify({ data: page, cursor: { previous: null, next } }));
+    options.onStdout?.(
+      JSON.stringify({ data: page, cursor: { previous: null, next } }),
+    );
     return 0;
   }
 
   spawn = async (id, options = {}) => {
     if (id === "opencode-api") {
       const code = this.answerApi(options.args ?? [], options);
-      return { write: async () => {}, end: async () => {}, kill: async () => {}, exited: Promise.resolve(code) };
+      return {
+        write: async () => {},
+        end: async () => {},
+        kill: async () => {},
+        exited: Promise.resolve(code),
+      };
     }
     let finish;
     const exited = new Promise((done) => {
@@ -82,12 +91,16 @@ export class StubOpenCode {
   handle({ id, method, params }, out) {
     if (!method || id === undefined) return;
     const answer = (result) => out({ jsonrpc: "2.0", id, result });
-    const refuse = (code, message) => out({ jsonrpc: "2.0", id, error: { code, message } });
+    const refuse = (code, message) =>
+      out({ jsonrpc: "2.0", id, error: { code, message } });
     if (method === "initialize")
       answer({
         protocolVersion: 1,
         agentInfo: { name: "OpenCode", version: "9.9.9+stub" },
-        agentCapabilities: { loadSession: true, mcpCapabilities: { http: true } },
+        agentCapabilities: {
+          loadSession: true,
+          mcpCapabilities: { http: true },
+        },
       });
     else if (method === "session/list") answer({ sessions: this.listed });
     else if (method === "session/load") {
@@ -98,7 +111,11 @@ export class StubOpenCode {
       else if (replay.error) refuse(INTERNAL_ERROR, replay.error);
       else {
         for (const update of replay)
-          out({ jsonrpc: "2.0", method: "session/update", params: { sessionId, update } });
+          out({
+            jsonrpc: "2.0",
+            method: "session/update",
+            params: { sessionId, update },
+          });
         answer({});
       }
     } else refuse(NO_METHOD, `No ${method}`);

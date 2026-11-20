@@ -8,8 +8,14 @@ import { useEffect, useId, useRef, useState } from "react";
 import { AgentInstructions } from "@buzz/features/agents/AgentInstructions";
 import { AgentSaveButton } from "@buzz/features/agents/AgentSaveButton";
 import { ModelDiscoveryRecovery } from "@buzz/features/agents/ModelDiscoveryRecovery";
-import { type ModelChoice, ModelPicker } from "@buzz/features/agents/ModelPicker";
-import type { AgentCreateProps, AgentViewProps } from "@buzz/features/agents/service";
+import {
+  type ModelChoice,
+  ModelPicker,
+} from "@buzz/features/agents/ModelPicker";
+import type {
+  AgentCreateProps,
+  AgentViewProps,
+} from "@buzz/features/agents/service";
 import { validWorkspace } from "@buzz/bundled/codex/config";
 import { Field } from "@buzz/shared/design-system/ui/Field";
 import { Input } from "@buzz/shared/design-system/ui/Input";
@@ -62,13 +68,17 @@ type Read<T> =
 function useRead<T>(read: () => Promise<T>, key = "") {
   const [state, setState] = useState<Read<T>>({ status: "loading" });
   const [round, setRound] = useState(0);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `read` is fixed per view.
+  const readRef = useRef(read);
+  readRef.current = read;
   useEffect(() => {
+    // Re-read on Retry or key change without looping on closure identity.
+    void round;
+    void key;
     let live = true;
     const kept = (prior: Read<T>) =>
       prior.value === undefined ? {} : { value: prior.value };
     setState((prior) => ({ status: "loading", ...kept(prior) }));
-    read().then(
+    readRef.current().then(
       (value) => live && setState({ status: "ready", value }),
       (error: unknown) =>
         live &&
@@ -139,7 +149,10 @@ export function createViews(models: ModelList, setup: OpenCodeSetup) {
         return levels.length
           ? [
               { id: "", label: DEFAULT_LEVEL_LABEL },
-              ...levels.map((level) => ({ id: level, label: levelLabel(level) })),
+              ...levels.map((level) => ({
+                id: level,
+                label: levelLabel(level),
+              })),
             ]
           : [];
       },
@@ -234,7 +247,9 @@ export function createViews(models: ModelList, setup: OpenCodeSetup) {
         value={value}
         {...(!value ? { valueLabel: DEFAULT_LEVEL_LABEL } : {})}
         {...(efforts.status === "error"
-          ? { description: `Could not read OpenCode's levels: ${efforts.error}` }
+          ? {
+              description: `Could not read OpenCode's levels: ${efforts.error}`,
+            }
           : {})}
         groups={[
           {
@@ -356,7 +371,9 @@ export function createViews(models: ModelList, setup: OpenCodeSetup) {
                 {settingsHost?.typeControl?.(configChanged)}
                 <ModelField
                   value={shown.model}
-                  onChange={(model) => setDraft({ ...draft, model, effort: "" })}
+                  onChange={(model) =>
+                    setDraft({ ...draft, model, effort: "" })
+                  }
                 />
                 <ThinkingField
                   model={shown.model}
@@ -369,7 +386,9 @@ export function createViews(models: ModelList, setup: OpenCodeSetup) {
               <AgentInstructions
                 value={draft.instructions}
                 disabled={false}
-                onChange={(instructions) => setDraft({ ...draft, instructions })}
+                onChange={(instructions) =>
+                  setDraft({ ...draft, instructions })
+                }
               />
             </>
           )}

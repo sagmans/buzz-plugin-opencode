@@ -270,8 +270,10 @@ export function promptPlace(text: string): PromptPlace {
   const field = (name: string) =>
     new RegExp(`^${name}: (.*)$`, "m").exec(context.body)?.[1]?.trim();
   const channel = field("Channel");
-  const channelId = channel && (/\(#([^)\s]+)\)$/.exec(channel)?.[1] ?? channel);
-  const root = field("Session scope") === "thread" ? field("Thread root") : undefined;
+  const channelId =
+    channel && (/\(#([^)\s]+)\)$/.exec(channel)?.[1] ?? channel);
+  const root =
+    field("Session scope") === "thread" ? field("Thread root") : undefined;
   const title = promptMessage(promptSections(text.slice(context.start)))
     .text.split("\n", 1)[0]
     ?.trim();
@@ -329,7 +331,9 @@ function clipped(value: unknown, limit = TEXT_LIMIT): unknown {
 /** The selected value of the config option in `category`, if any. */
 function currentValue(options: unknown, category: string) {
   if (!Array.isArray(options)) return undefined;
-  const option = options.map(object).find((item) => item?.category === category);
+  const option = options
+    .map(object)
+    .find((item) => item?.category === category);
   return str(option?.currentValue) || undefined;
 }
 
@@ -369,7 +373,10 @@ type SessionState = {
 class ProcessRecord implements WireTap {
   private readonly sessions = new Map<string, SessionState>();
   /** Our requests by id, with the session each names. */
-  private readonly requests = new Map<string, { method: string; sessionId: string }>();
+  private readonly requests = new Map<
+    string,
+    { method: string; sessionId: string }
+  >();
   /** The harness's requests by id (permission prompts), with their session. */
   private readonly asks = new Map<string, string>();
   private turns = 0;
@@ -381,13 +388,16 @@ class ProcessRecord implements WireTap {
   ) {}
 
   written(message: Wire) {
-    const key = message.id === undefined ? undefined : JSON.stringify(message.id);
+    const key =
+      message.id === undefined ? undefined : JSON.stringify(message.id);
     const method = str(message.method);
     const sessionId = str(object(message.params)?.sessionId);
-    if (method && key !== undefined) this.requests.set(key, { method, sessionId });
+    if (method && key !== undefined)
+      this.requests.set(key, { method, sessionId });
     if (method === PROMPT_METHOD) return this.start(sessionId, message);
     if (method) {
-      if (RECORDED_REQUESTS.has(method)) this.frame(sessionId, "acp_write", message);
+      if (RECORDED_REQUESTS.has(method))
+        this.frame(sessionId, "acp_write", message);
       return;
     }
     // Our answer to the harness's own request.
@@ -397,13 +407,15 @@ class ProcessRecord implements WireTap {
   }
 
   read(message: Wire): undefined {
-    const key = message.id === undefined ? undefined : JSON.stringify(message.id);
+    const key =
+      message.id === undefined ? undefined : JSON.stringify(message.id);
     const method = str(message.method);
     if (!method && key !== undefined) return this.answered(key, message);
     const params = object(message.params) ?? {};
     const sessionId = str(params.sessionId);
     if (method && key !== undefined) this.asks.set(key, sessionId);
-    if (method === UPDATE_METHOD) this.noted(sessionId, object(params.update) ?? {});
+    if (method === UPDATE_METHOD)
+      this.noted(sessionId, object(params.update) ?? {});
     this.frame(sessionId, "acp_read", message);
     return undefined;
   }
@@ -432,7 +444,9 @@ class ProcessRecord implements WireTap {
     if (request.method === PROMPT_METHOD) {
       const error = object(message.error);
       this.end(this.state(sessionId), {
-        ...(error ? { error: str(error.message) || "The harness refused the prompt" } : {}),
+        ...(error
+          ? { error: str(error.message) || "The harness refused the prompt" }
+          : {}),
         usage: object(result.usage),
       });
     }
@@ -446,7 +460,10 @@ class ProcessRecord implements WireTap {
     if (kind === "usage_update") {
       const cost = count(object(update.cost)?.amount);
       if (cost !== undefined) state.cost = cost;
-    } else if (kind === "config_option_update" && update.configOptions !== undefined)
+    } else if (
+      kind === "config_option_update" &&
+      update.configOptions !== undefined
+    )
       state.configOptions = update.configOptions;
   }
 
@@ -483,7 +500,11 @@ class ProcessRecord implements WireTap {
     const turn: RecordedTurn = {
       id: `${this.recorder.run}-${this.slot}-${++this.turns}`,
       sessionId,
-      conversation: channelId ? (root ? `${channelId}/${root}` : channelId) : "",
+      conversation: channelId
+        ? root
+          ? `${channelId}/${root}`
+          : channelId
+        : "",
       ...(channelId ? { channelId } : {}),
       ...(root ? { root } : {}),
       ...(place.title ? { title: place.title } : {}),
@@ -497,11 +518,20 @@ class ProcessRecord implements WireTap {
         ...(root ? { threadRootEventId: root } : {}),
       }),
       ...(state.first
-        ? [this.make(turn, "session_resolved", { sessionId, isNewSession: state.fresh })]
+        ? [
+            this.make(turn, "session_resolved", {
+              sessionId,
+              isNewSession: state.fresh,
+            }),
+          ]
         : []),
       ...(state.configOptions === undefined
         ? []
-        : [this.make(turn, "session_config_captured", { configOptions: state.configOptions })]),
+        : [
+            this.make(turn, "session_config_captured", {
+              configOptions: state.configOptions,
+            }),
+          ]),
       ...state.pending.map((frame) => ({
         ...frame,
         turnId: turn.id,
@@ -512,7 +542,14 @@ class ProcessRecord implements WireTap {
     state.pending = [];
     state.turn = turn;
     this.recorder.add(agent, turn);
-    this.push(turn, this.make(turn, "acp_write", clipped(withoutPreamble(message), PROMPT_TEXT_LIMIT)));
+    this.push(
+      turn,
+      this.make(
+        turn,
+        "acp_write",
+        clipped(withoutPreamble(message), PROMPT_TEXT_LIMIT),
+      ),
+    );
   }
 
   private end(
@@ -542,14 +579,20 @@ class ProcessRecord implements WireTap {
 
   /** Files a wire message under its session's turn: the running one, else the
    * latest for a late update, else the next one. */
-  private frame(sessionId: string, kind: "acp_write" | "acp_read", message: Wire) {
+  private frame(
+    sessionId: string,
+    kind: "acp_write" | "acp_read",
+    message: Wire,
+  ) {
     if (!sessionId) return;
     const state = this.state(sessionId);
     const late = str(message.method) === UPDATE_METHOD ? state.last : undefined;
     const turn = state.turn ?? late;
     if (!turn || !state.agent) {
       if (state.pending.length < EARLY_FRAMES)
-        state.pending.push(this.make(undefined, kind, clipped(message), sessionId));
+        state.pending.push(
+          this.make(undefined, kind, clipped(message), sessionId),
+        );
       return;
     }
     if (!this.merged(turn, kind, message))
@@ -654,7 +697,10 @@ export class ActivityRecorder {
     const same = record.turns.filter(
       (item) => item.conversation === turn.conversation,
     );
-    for (const old of same.slice(0, Math.max(same.length - TURNS_PER_CONVERSATION, 0)))
+    for (const old of same.slice(
+      0,
+      Math.max(same.length - TURNS_PER_CONVERSATION, 0),
+    ))
       this.drop(record, old);
     this.changed(agent, true);
   }
@@ -687,7 +733,10 @@ export class ActivityRecorder {
     const index = record.turns.indexOf(turn);
     if (index < 0) return;
     record.turns.splice(index, 1);
-    record.dropped.set(turn.sessionId, (record.dropped.get(turn.sessionId) ?? 0) + 1);
+    record.dropped.set(
+      turn.sessionId,
+      (record.dropped.get(turn.sessionId) ?? 0) + 1,
+    );
   }
 
   private key(agent: string) {

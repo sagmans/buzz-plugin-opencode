@@ -60,7 +60,10 @@ const lastAt = (turns: readonly RecordedTurn[]) =>
 /** One turn's token use and cost, as the app's usage reads them. ACP counts
  * cached input apart from `inputTokens`, and thinking apart from output, where
  * the app has no field of its own for it. */
-function observation(turn: RecordedTurn, priorCost: number | undefined): UsageObservation | undefined {
+function observation(
+  turn: RecordedTurn,
+  priorCost: number | undefined,
+): UsageObservation | undefined {
   const { usage } = turn;
   if (!usage) return undefined;
   const output =
@@ -81,7 +84,9 @@ function observation(turn: RecordedTurn, priorCost: number | undefined): UsageOb
       ...(usage.input !== undefined ? { input: usage.input } : {}),
       ...(output !== undefined ? { output } : {}),
       ...(usage.cacheRead !== undefined ? { cacheRead: usage.cacheRead } : {}),
-      ...(usage.cacheWrite !== undefined ? { cacheWrite: usage.cacheWrite } : {}),
+      ...(usage.cacheWrite !== undefined
+        ? { cacheWrite: usage.cacheWrite }
+        : {}),
     },
     ...(usd !== undefined && usd >= 0
       ? { cost: { usd, source: COST_SOURCE } }
@@ -117,7 +122,9 @@ export class RecordedHistory {
     const turn = this.recorder
       .turns(agent)
       .findLast((item) => item.conversation === key);
-    return turn && this.recent(agent).find((row) => row.sessionId === turn.sessionId);
+    return (
+      turn && this.recent(agent).find((row) => row.sessionId === turn.sessionId)
+    );
   }
 
   /** A session's latest turns in the app's transcript model, or undefined when

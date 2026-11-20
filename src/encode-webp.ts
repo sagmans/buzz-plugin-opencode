@@ -17,7 +17,10 @@ export class PictureEncodeError extends Error {
 }
 
 /** The pixels as a PNG, under buzz-app's signature. Rejects when `signal` ends. */
-export async function encodeWebp(pixels: ImageData, signal: AbortSignal): Promise<Blob> {
+export async function encodeWebp(
+  pixels: ImageData,
+  signal: AbortSignal,
+): Promise<Blob> {
   signal.throwIfAborted();
   const canvas = document.createElement("canvas");
   canvas.width = pixels.width;
@@ -30,7 +33,10 @@ export async function encodeWebp(pixels: ImageData, signal: AbortSignal): Promis
       );
     }
     context.putImageData(pixels, 0, 0);
-    return await toBlob(canvas, AbortSignal.any([signal, AbortSignal.timeout(ENCODE_TIMEOUT_MS)]));
+    return await toBlob(
+      canvas,
+      AbortSignal.any([signal, AbortSignal.timeout(ENCODE_TIMEOUT_MS)]),
+    );
   } finally {
     // Frees the pixel memory at once, as the caller does with its own canvas.
     canvas.width = 0;

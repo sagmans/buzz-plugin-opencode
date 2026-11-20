@@ -137,7 +137,8 @@ export function observationOf(value: unknown): UsageObservation | undefined {
   };
   const at = num(time?.completed) ?? num(time?.created);
   const usd = num(row?.cost);
-  if (at === undefined || !Object.values(counts).some(Boolean)) return undefined;
+  if (at === undefined || !Object.values(counts).some(Boolean))
+    return undefined;
   return {
     ...(str(row?.id) ? { requestId: str(row?.id) } : {}),
     at,

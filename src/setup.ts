@@ -77,7 +77,9 @@ export class SetupCheckError extends Error {
     readonly operation: string,
     readonly waitedMs: number,
   ) {
-    super(`OpenCode did not answer ${operation} within ${waitedMs / 1000} seconds`);
+    super(
+      `OpenCode did not answer ${operation} within ${waitedMs / 1000} seconds`,
+    );
     this.name = "SetupCheckError";
   }
 }
@@ -122,7 +124,10 @@ function bounded<T>(operation: string, work: Promise<T>): Promise<T> {
 }
 
 const reason = (error: unknown) =>
-  (error instanceof Error ? error.message : String(error)).slice(0, PROBLEM_LIMIT);
+  (error instanceof Error ? error.message : String(error)).slice(
+    0,
+    PROBLEM_LIMIT,
+  );
 
 const currentModel = ({ configOptions = [] }: ConfigOptions) => {
   const value = configOptions.find((item) => item.id === "model")?.currentValue;
@@ -245,7 +250,9 @@ export class OpenCodeSetup {
    * first even when OpenCode no longer lists it, each with its levels, resting
    * on the agent's own level. `Default` leads them: it lets one message drop
    * an agent's saved level, and the composer's slider needs a resting place. */
-  async picks(choice: Readonly<{ model: string; effort: string }>): Promise<Models> {
+  async picks(
+    choice: Readonly<{ model: string; effort: string }>,
+  ): Promise<Models> {
     const ids = await this.list.ids().catch(() => [] as string[]);
     const { model: current, effort: variant } = splitVariant(choice.model, ids);
     const named = current && !ids.includes(current) ? [current, ...ids] : ids;

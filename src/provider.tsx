@@ -13,7 +13,11 @@ import type { OpenCodeSetup } from "./setup";
 const DEFAULT_MODEL_LABEL = "OpenCode default";
 /** A catalog can list hundreds of models: the dialog scrolls them. As an inline
  * style, as the app's stylesheet has only the classes the app itself uses. */
-const MODEL_LIST_STYLE = { maxHeight: 240, overflow: "auto", margin: 0 } as const;
+const MODEL_LIST_STYLE = {
+  maxHeight: 240,
+  overflow: "auto",
+  margin: 0,
+} as const;
 
 export function createProvider(setup: OpenCodeSetup): AgentProvider {
   /** Follows the check's state, so a new finding shows at once. */

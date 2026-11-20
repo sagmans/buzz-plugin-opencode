@@ -25,7 +25,14 @@ import type {
   ServeMcp,
   Spawn,
 } from "@buzz/features/agent-harness/acp/types";
-import { object, promptText, str, tapSpawn, type Wire, type WireTap } from "./recorder";
+import {
+  object,
+  promptText,
+  str,
+  tapSpawn,
+  type Wire,
+  type WireTap,
+} from "./recorder";
 import { SteerChannel } from "./steer";
 
 export {

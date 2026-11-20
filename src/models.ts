@@ -68,7 +68,8 @@ export class ModelList {
   /** The model ids, read again after `MODELS_TTL_MS` or a failure. */
   ids(): Promise<string[]> {
     const now = Date.now();
-    if (this.cached && now - this.cached.at < MODELS_TTL_MS) return this.cached.ids;
+    if (this.cached && now - this.cached.at < MODELS_TTL_MS)
+      return this.cached.ids;
     const ids = (async () => {
       const output = await this.runCommand(MODELS_COMMAND);
       // The host gives null for a failed, timed-out or oversized run.

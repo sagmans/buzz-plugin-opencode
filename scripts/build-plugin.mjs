@@ -50,7 +50,12 @@ function parseArgs(argv) {
 }
 
 /** Runs a tool with a bounded wait; output goes straight to the terminal. */
-function run(label, command, args, { cwd = ROOT, timeout, capture = false } = {}) {
+function run(
+  label,
+  command,
+  args,
+  { cwd = ROOT, timeout, capture = false } = {},
+) {
   const started = Date.now();
   const result = spawnSync(command, args, {
     cwd,
@@ -59,10 +64,19 @@ function run(label, command, args, { cwd = ROOT, timeout, capture = false } = {}
     stdio: capture ? ["ignore", "pipe", "pipe"] : "inherit",
   });
   const elapsedMs = Date.now() - started;
-  if (result.error) throw new BuildError(`${label} could not run (${command}, ${elapsedMs} ms)`, { cause: result.error });
-  if (result.signal) throw new BuildError(`${label} stopped by ${result.signal} after ${elapsedMs} ms (limit ${timeout} ms)`);
+  if (result.error)
+    throw new BuildError(
+      `${label} could not run (${command}, ${elapsedMs} ms)`,
+      { cause: result.error },
+    );
+  if (result.signal)
+    throw new BuildError(
+      `${label} stopped by ${result.signal} after ${elapsedMs} ms (limit ${timeout} ms)`,
+    );
   if (result.status !== 0)
-    throw new BuildError(`${label} failed with exit ${result.status} after ${elapsedMs} ms${capture ? `: ${result.stderr.trim()}` : ""}`);
+    throw new BuildError(
+      `${label} failed with exit ${result.status} after ${elapsedMs} ms${capture ? `: ${result.stderr.trim()}` : ""}`,
+    );
   return capture ? result.stdout.trim() : "";
 }
 
@@ -74,7 +88,10 @@ function checkLink() {
     isLink = false;
   }
   if (!isLink || !existsSync(CLONE_LINK))
-    throw new BuildError(`${CLONE_LINK} is missing: run scripts/link-toolchain <buzz-app clone> first`, { exit: EXIT_CONFIG });
+    throw new BuildError(
+      `${CLONE_LINK} is missing: run scripts/link-toolchain <buzz-app clone> first`,
+      { exit: EXIT_CONFIG },
+    );
 }
 
 /** This repository's packages must be a real install from its own lockfile,
@@ -86,24 +103,43 @@ function checkInstall() {
   } catch {
     isDir = false;
   }
-  const missing = TOOLS.filter((name) => !existsSync(join(OWN_MODULES, ".bin", name)));
+  const missing = TOOLS.filter(
+    (name) => !existsSync(join(OWN_MODULES, ".bin", name)),
+  );
   if (!isDir || missing.length)
-    throw new BuildError(`${OWN_MODULES} is not installed: run 'pnpm install --frozen-lockfile'`, { exit: EXIT_CONFIG });
+    throw new BuildError(
+      `${OWN_MODULES} is not installed: run 'pnpm install --frozen-lockfile'`,
+      { exit: EXIT_CONFIG },
+    );
 }
 
 /** The clone must be at the plugin's pinned revision with no tracked edits. */
 function checkRevision() {
   const match = REV_PATTERN.exec(readFileSync(CONSTANTS, "utf8"));
-  if (!match) throw new BuildError(`BUZZ_APP_REV not found in ${CONSTANTS}`, { exit: EXIT_CONFIG });
-  const pinned = match[1];
-  const git = (args) => run("git", "git", ["-C", CLONE_LINK, ...args], { capture: true, timeout: GIT_TIMEOUT_MS });
-  const head = git(["rev-parse", "HEAD"]);
-  if (!head.startsWith(pinned))
-    throw new BuildError(`buzz-app clone is at ${head.slice(0, 12)}, the plugin pins ${pinned}: check out ${pinned} and reinstall`, {
+  if (!match)
+    throw new BuildError(`BUZZ_APP_REV not found in ${CONSTANTS}`, {
       exit: EXIT_CONFIG,
     });
+  const pinned = match[1];
+  const git = (args) =>
+    run("git", "git", ["-C", CLONE_LINK, ...args], {
+      capture: true,
+      timeout: GIT_TIMEOUT_MS,
+    });
+  const head = git(["rev-parse", "HEAD"]);
+  if (!head.startsWith(pinned))
+    throw new BuildError(
+      `buzz-app clone is at ${head.slice(0, 12)}, the plugin pins ${pinned}: check out ${pinned} and reinstall`,
+      {
+        exit: EXIT_CONFIG,
+      },
+    );
   const dirty = git(["status", "--porcelain", "--untracked-files=no"]);
-  if (dirty) throw new BuildError(`buzz-app clone has local edits; the bundle must hold its pinned code only:\n${dirty}`, { exit: EXIT_CONFIG });
+  if (dirty)
+    throw new BuildError(
+      `buzz-app clone has local edits; the bundle must hold its pinned code only:\n${dirty}`,
+      { exit: EXIT_CONFIG },
+    );
   return pinned;
 }
 
@@ -121,7 +157,10 @@ const ICON_SLOT_MARKS = [
 /** Stops the build when the app's Settings page no longer has what
  * src/settings-icon.ts looks for. */
 function checkIconSlot() {
-  const page = readFileSync(join(ROOT, "buzz-app", "src", "app", "Settings.tsx"), "utf8");
+  const page = readFileSync(
+    join(ROOT, "buzz-app", "src", "app", "Settings.tsx"),
+    "utf8",
+  );
   const missing = ICON_SLOT_MARKS.filter((mark) => !page.includes(mark));
   if (missing.length)
     throw new BuildError(
@@ -137,13 +176,20 @@ function main() {
   const rev = checkRevision();
   checkIconSlot();
   const bin = (name) => join(OWN_MODULES, ".bin", name);
-  run("tsc", bin("tsc"), ["-p", join(ROOT, "tsconfig.json")], { timeout: TSC_TIMEOUT_MS });
+  run("tsc", bin("tsc"), ["-p", join(ROOT, "tsconfig.json")], {
+    timeout: TSC_TIMEOUT_MS,
+  });
   console.log(`typecheck ok (buzz-app ${rev.slice(0, 12)})`);
   if (options.checkOnly) return;
   // From the repository root: the bundle names each module by its path
   // relative to it (buzz-app/..., node_modules/...), so no local path leaks
   // into it.
-  run("vite build", bin("vite"), ["build", "--config", join(ROOT, "vite.config.ts")], { timeout: VITE_TIMEOUT_MS });
+  run(
+    "vite build",
+    bin("vite"),
+    ["build", "--config", join(ROOT, "vite.config.ts")],
+    { timeout: VITE_TIMEOUT_MS },
+  );
   console.log(`bundle: ${join(ROOT, "dist", "plugin.js")}`);
 }
 
@@ -151,6 +197,7 @@ try {
   main();
 } catch (error) {
   console.error(`build-plugin: ${error.message}`);
-  if (error.cause) console.error(`  cause: ${error.cause.message ?? error.cause}`);
+  if (error.cause)
+    console.error(`  cause: ${error.cause.message ?? error.cause}`);
   process.exit(error.exit ?? 1);
 }
